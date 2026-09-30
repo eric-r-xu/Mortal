@@ -7,7 +7,7 @@ import os
 from model import Brain, DQN
 from engine import MortalEngine
 from libriichi.arena import OneVsThree
-from config import config
+from config import config, GAME_LENGTH
 
 def main():
     cfg = config['1v3']
@@ -77,6 +77,7 @@ def main():
         env = OneVsThree(
             disable_progress_bar = False,
             log_dir = log_dir,
+            game_length = GAME_LENGTH,
         )
         if use_akochan:
             rankings = env.ako_vs_py(

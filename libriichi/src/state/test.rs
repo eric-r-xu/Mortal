@@ -20,7 +20,11 @@ impl PlayerState {
     }
 
     fn from_log(player_id: u8, log: &str) -> Self {
-        let mut ps = Self::new(player_id);
+        Self::from_log_with_length(player_id, 8, log)
+    }
+
+    fn from_log_with_length(player_id: u8, game_length: u8, log: &str) -> Self {
+        let mut ps = Self::new_with_length(player_id, game_length);
         for line in log.trim().split('\n') {
             ps.test_update_json(line);
         }
@@ -665,6 +669,16 @@ fn rule_based_agari_all_last_minogashi() {
     assert!(ps.last_cans.can_tsumo_agari);
     let should_hora = ps.rule_based_agari();
     assert!(!should_hora);
+
+    // The same hand at E4 is all-last in tonpuu, so the guard still holds
+    // back; in hanchan E4 is not all-last, so it takes the agari.
+    let e4_log = log.replacen(r#""bakaze":"S""#, r#""bakaze":"E""#, 1);
+    let tonpuu_ps = PlayerState::from_log_with_length(1, 4, &e4_log);
+    assert!(tonpuu_ps.is_all_last);
+    assert!(!tonpuu_ps.rule_based_agari());
+    let hanchan_ps = PlayerState::from_log_with_length(1, 8, &e4_log);
+    assert!(!hanchan_ps.is_all_last);
+    assert!(hanchan_ps.rule_based_agari());
 
     let orig_scores = mem::replace(&mut ps.scores, [9000, 30000, 30000, 30000]);
     let should_hora = ps.rule_based_agari();
@@ -1415,4 +1429,32 @@ fn chi_at_0_shanten() {
     assert_eq!(ps.real_time_shanten(), -1);
     assert!(ps.at_furiten);
     assert!(!ps.has_next_shanten_discard);
+}
+
+#[test]
+fn is_all_last_by_game_length() {
+    let start_kyoku = |bakaze: &str, kyoku: u8| {
+        format!(
+            r#"{{"type":"start_kyoku","bakaze":"{bakaze}","dora_marker":"5m","kyoku":{kyoku},"honba":0,"kyotaku":0,"oya":{},"scores":[25000,25000,25000,25000],"tehais":[["4m","5mr","8m","1p","3p","3p","5p","2s","5sr","9s","W","P","P"],["2m","3m","5m","7m","7p","9p","4s","5s","5s","6s","7s","7s","E"],["3m","5m","6m","2p","6p","9p","1s","5s","8s","9s","S","S","C"],["1m","4m","3p","4p","5pr","7p","1s","2s","7s","8s","W","N","P"]]}}"#,
+            kyoku - 1,
+        )
+    };
+    let cases = [
+        // (bakaze, kyoku, tonpuu, hanchan)
+        ("E", 1, false, false),
+        ("E", 3, false, false),
+        ("E", 4, true, false),
+        ("S", 1, true, false),
+        ("S", 3, true, false),
+        ("S", 4, true, true),
+        ("W", 1, true, true),
+        ("W", 4, true, true),
+    ];
+    for (bakaze, kyoku, tonpuu, hanchan) in cases {
+        let log = start_kyoku(bakaze, kyoku);
+        let ps = PlayerState::from_log_with_length(0, 4, &log);
+        assert_eq!(ps.is_all_last, tonpuu, "tonpuu {bakaze}{kyoku}");
+        let ps = PlayerState::from_log_with_length(0, 8, &log);
+        assert_eq!(ps.is_all_last, hanchan, "hanchan {bakaze}{kyoku}");
+    }
 }

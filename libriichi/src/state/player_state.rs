@@ -2,8 +2,8 @@ use super::action::ActionCandidate;
 use super::item::{ChiPon, KawaItem, Sutehai};
 use crate::algo::sp::Candidate;
 use crate::hand::tiles_to_string;
-use crate::must_tile;
 use crate::tile::Tile;
+use crate::{must_tile, tu8};
 use std::iter;
 
 use anyhow::Result;
@@ -23,6 +23,11 @@ use tinyvec::{ArrayVec, TinyVec};
 #[derivative(Default)]
 pub struct PlayerState {
     pub(super) player_id: u8,
+    /// Scheduled hands in the game: 8 for hanchan, 4 for tonpuu. Decides
+    /// which round is all-last and which round is the sudden-death extension
+    /// (西入 for hanchan, 南入 for tonpuu).
+    #[derivative(Default(value = "8"))]
+    pub(super) game_length: u8,
 
     /// Does not include aka.
     #[derivative(Default(value = "[0; 34]"))]
@@ -67,7 +72,7 @@ pub struct PlayerState {
     pub(super) rank: u8,
     /// Relative to `player_id`.
     pub(super) oya: u8,
-    /// Including 西入 sudden death.
+    /// Including sudden death (西入 for hanchan, 南入 for tonpuu).
     pub(super) is_all_last: bool,
     pub(super) dora_indicators: ArrayVec<[Tile; 5]>,
 
@@ -141,13 +146,20 @@ pub struct PlayerState {
 
 #[pymethods]
 impl PlayerState {
-    /// Panics if `player_id` is outside of range [0, 3].
+    /// Panics if `player_id` is outside of range [0, 3], or `game_length` is
+    /// neither 4 (tonpuu) nor 8 (hanchan).
     #[new]
+    #[pyo3(signature = (player_id, *, game_length=8))]
     #[must_use]
-    pub fn new(player_id: u8) -> Self {
+    pub fn new_with_length(player_id: u8, game_length: u8) -> Self {
         assert!(player_id < 4, "{player_id} is not in range [0, 3]");
+        assert!(
+            matches!(game_length, 4 | 8),
+            "game_length must be 4 (tonpuu) or 8 (hanchan), got {game_length}",
+        );
         Self {
             player_id,
+            game_length,
             ..Default::default()
         }
     }
@@ -260,5 +272,30 @@ single player table (max EV):
             self.last_kawa_tile,
             self.tiles_left,
         )
+    }
+}
+
+impl PlayerState {
+    /// A hanchan `PlayerState`. Panics if `player_id` is outside of range
+    /// [0, 3].
+    #[inline]
+    #[must_use]
+    pub fn new(player_id: u8) -> Self {
+        Self::new_with_length(player_id, 8)
+    }
+
+    /// The last round of the schedule: E for tonpuu, S for hanchan.
+    #[inline]
+    #[must_use]
+    pub(super) fn last_scheduled_wind(&self) -> Tile {
+        must_tile!(tu8!(E) + self.game_length / 4 - 1)
+    }
+
+    /// The sudden-death extension round: S (南入) for tonpuu, W (西入) for
+    /// hanchan.
+    #[inline]
+    #[must_use]
+    pub(super) fn extension_wind(&self) -> Tile {
+        must_tile!(tu8!(E) + self.game_length / 4)
     }
 }

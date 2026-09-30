@@ -10,7 +10,7 @@ from engine import MortalEngine
 from common import filtered_trimmed_lines
 from libriichi.mjai import Bot
 from libriichi.dataset import Grp
-from config import config
+from config import config, GAME_LENGTH
 
 USAGE = '''Usage: python mortal.py <ID>
 
@@ -54,7 +54,7 @@ def main():
         enable_rule_based_agari_guard = True,
         name = 'mortal',
     )
-    bot = Bot(engine, player_id)
+    bot = Bot(engine, player_id, game_length = GAME_LENGTH)
 
     if review_mode:
         logs = []

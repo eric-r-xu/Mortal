@@ -3,7 +3,7 @@ use super::{Event, EventExt};
 use crate::agent::{BatchAgent, MortalBatchAgent};
 use crate::state::PlayerState;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use pyo3::prelude::*;
 use serde_json as json;
 
@@ -16,10 +16,16 @@ pub struct Bot {
 
 #[pymethods]
 impl Bot {
+    /// `game_length` is 8 for hanchan and 4 for tonpuu.
     #[new]
-    fn new(engine: PyObject, player_id: u8) -> Result<Self> {
+    #[pyo3(signature = (engine, player_id, *, game_length=8))]
+    fn new(engine: PyObject, player_id: u8, game_length: u8) -> Result<Self> {
+        ensure!(
+            matches!(game_length, 4 | 8),
+            "game_length must be 4 (tonpuu) or 8 (hanchan), got {game_length}",
+        );
         let agent = MortalBatchAgent::new(engine, &[player_id])?;
-        let state = PlayerState::new(player_id);
+        let state = PlayerState::new_with_length(player_id, game_length);
         Ok(Self {
             agent,
             state,

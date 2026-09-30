@@ -83,7 +83,7 @@ impl Game {
                 ..Default::default()
             };
             next_board.init_from_seed(self.seed);
-            self.board = next_board.into_state();
+            self.board = next_board.into_state(self.length);
             self.kyoku_started = true;
         }
 
@@ -219,9 +219,38 @@ impl Game {
 }
 
 impl BatchGame {
+    /// Tenhou rules for a game of `length` scheduled hands: 8 for hanchan, 4
+    /// for tonpuu. Panics on any other length.
+    pub fn tenhou(length: u8, disable_progress_bar: bool) -> Self {
+        match length {
+            4 => Self::tenhou_tonpuu(disable_progress_bar),
+            8 => Self::tenhou_hanchan(disable_progress_bar),
+            _ => panic!("game length must be 4 (tonpuu) or 8 (hanchan), got {length}"),
+        }
+    }
+
     pub const fn tenhou_hanchan(disable_progress_bar: bool) -> Self {
         Self {
             length: 8,
+            init_scores: [25000; 4],
+            disable_progress_bar,
+        }
+    }
+
+    /// Tenhou's East-only game (東風戦): after E4 the game ends if anyone has
+    /// 30000, otherwise it goes into 南入 sudden death, ending as soon as
+    /// someone reaches 30000 and at S4 at the latest. The dealer at all-last
+    /// stops (agari-yame / tenpai-yame) when top with 30000 or more, and the
+    /// game ends as soon as anyone goes below zero.
+    ///
+    /// TileSense's East-only riichi game differs: it has no 30000 target (it
+    /// always ends after E4 once the dealer loses the seat, so there is no
+    /// 南入) and no agari-yame / tenpai-yame (the dealer at E4 repeats until
+    /// they lose the seat). Tobi and abortive draws match. The arena follows
+    /// Tenhou, which is what the training data follows.
+    pub const fn tenhou_tonpuu(disable_progress_bar: bool) -> Self {
+        Self {
+            length: 4,
             init_scores: [25000; 4],
             disable_progress_bar,
         }
@@ -320,6 +349,8 @@ impl BatchGame {
 mod test {
     use super::*;
     use crate::agent::Tsumogiri;
+    use crate::mjai::Event;
+    use crate::tu8;
 
     #[test]
     fn tsumogiri() {
@@ -369,5 +400,62 @@ mod test {
 
         g.run(&mut agents, indexes, &[(1009, 0), (1021, 0)])
             .unwrap();
+    }
+
+    /// Runs `seed_count` games of tsumogiri self-play and checks that every
+    /// game stops where Tenhou's rules for `g` say it may.
+    fn check_game_ends(g: &BatchGame, seed_count: u64) {
+        let player_ids: Vec<_> = (0..4).cycle().take(seed_count as usize * 4).collect();
+        let mut agents = [Box::new(Tsumogiri::new_batched(&player_ids).unwrap()) as _];
+        let indexes: Vec<_> = (0..seed_count as usize)
+            .map(|game| {
+                array::from_fn(|i| Index {
+                    agent_idx: 0,
+                    player_id_idx: game * 4 + i,
+                })
+            })
+            .collect();
+        let seeds: Vec<_> = (0..seed_count).map(|s| (s, 0)).collect();
+        let results = g.run(&mut agents, &indexes, &seeds).unwrap();
+
+        for result in results {
+            // Counts from 0: E1 = 0, S1 = 4, W1 = 8.
+            let grand_kyokus: Vec<_> = result
+                .game_log
+                .iter()
+                .map(|kyoku_log| match kyoku_log[0].event {
+                    Event::StartKyoku { bakaze, kyoku, .. } => {
+                        (bakaze.as_u8() - tu8!(E)) * 4 + kyoku - 1
+                    }
+                    _ => panic!("kyoku log does not begin with start_kyoku"),
+                })
+                .collect();
+            let last = *grand_kyokus.last().unwrap();
+            assert!(
+                last < g.length + 4,
+                "seed {:?}: played past the extension cap",
+                result.seed,
+            );
+
+            let has_tobi = result.scores.iter().any(|&s| s < 0);
+            let at_cap = last == g.length + 3;
+            let reached_target = last >= g.length - 1 && result.scores.iter().any(|&s| s >= 30000);
+            assert!(
+                has_tobi || at_cap || reached_target,
+                "seed {:?}: ended at grand kyoku {last} with scores {:?}",
+                result.seed,
+                result.scores,
+            );
+        }
+    }
+
+    #[test]
+    fn tonpuu_ends_by_s4() {
+        check_game_ends(&BatchGame::tenhou_tonpuu(true), 16);
+    }
+
+    #[test]
+    fn hanchan_ends_by_w4() {
+        check_game_ends(&BatchGame::tenhou_hanchan(true), 4);
     }
 }
