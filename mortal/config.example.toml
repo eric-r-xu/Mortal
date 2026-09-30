@@ -48,6 +48,8 @@ augmented_first = false
 [env]
 gamma = 1
 pts = [6.0, 4.0, 2.0, 0.0]
+# scheduled hands per game: 8 = hanchan, 4 = East-only (tonpuu, Tenhou rules)
+game_length = 8
 
 [resnet]
 conv_channels = 192

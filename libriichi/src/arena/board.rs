@@ -122,14 +122,16 @@ impl Board {
         assert_eq!(idx, seq.len());
     }
 
-    pub fn into_state(self) -> BoardState {
+    /// `game_length` is 8 for hanchan and 4 for tonpuu; the players' states
+    /// need it to tell which round is all-last.
+    pub fn into_state(self, game_length: u8) -> BoardState {
         let oya = self.kyoku % 4;
         let dora_indicators_full = self.dora_indicators.clone();
 
         BoardState {
             board: self,
             oya,
-            player_states: array::from_fn(|i| PlayerState::new(i as u8)),
+            player_states: array::from_fn(|i| PlayerState::new_with_length(i as u8, game_length)),
             dora_indicators_full,
             ..Default::default()
         }

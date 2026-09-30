@@ -5,7 +5,7 @@ use crate::algo::shanten;
 use crate::algo::sp::{InitState, SPCalculator};
 use crate::tile::Tile;
 use crate::vec_ops::vec_add_assign;
-use crate::{must_tile, t, tu8, tuz};
+use crate::{must_tile, tu8, tuz};
 
 use anyhow::{Context, Result, ensure};
 use tinyvec::array_vec;
@@ -220,9 +220,10 @@ impl PlayerState {
             return false;
         }
 
-        // Ryukyoku if we are in the west round, because we usually don't need a
-        // big hand to win.
-        if self.bakaze == t!(W) {
+        // Ryukyoku if we are in the sudden-death extension round (西入 for
+        // hanchan, 南入 for tonpuu), because we usually don't need a big hand to
+        // win.
+        if self.bakaze == self.extension_wind() {
             return true;
         }
 
@@ -276,15 +277,15 @@ impl PlayerState {
             return true;
         }
 
-        if self.bakaze == t!(W) {
-            // Agari if we are in the west round but it is not yet the real
-            // all-last (W4).
+        if self.bakaze == self.extension_wind() {
+            // Agari if we are in the extension round but it is not yet the
+            // real all-last (W4 for hanchan, S4 for tonpuu).
             if self.kyoku < 3 {
                 return true;
             }
         } else if self.scores.iter().all(|&s| s < 30000) {
-            // Agari if 西入 is possible. Note that this condition is sound but
-            // not complete.
+            // Agari if the extension (西入 or 南入) is possible. Note that this
+            // condition is sound but not complete.
             return true;
         }
 
@@ -353,11 +354,11 @@ impl PlayerState {
                 });
         }
 
-        // The prerequisite `!(self.bakaze == t!(W) && self.kyoku == 3)` has
-        // already been checked at the beginning.
+        // The prerequisite `!(self.bakaze == self.extension_wind() &&
+        // self.kyoku == 3)` has already been checked at the beginning.
         //
-        // Agari if 西入 or keeping 西入 is possible. This condition is sound
-        // and complete.
+        // Agari if entering or staying in the extension (西入 or 南入) is
+        // possible. This condition is sound and complete.
         if exp_scores.iter().all(|&s| s < 30000) {
             return true;
         }

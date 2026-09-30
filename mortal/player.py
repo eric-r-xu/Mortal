@@ -9,7 +9,7 @@ from model import Brain, DQN
 from engine import MortalEngine
 from libriichi.stat import Stat
 from libriichi.arena import OneVsThree
-from config import config
+from config import config, GAME_LENGTH
 
 class TestPlayer:
     def __init__(self):
@@ -60,6 +60,7 @@ class TestPlayer:
         env = OneVsThree(
             disable_progress_bar = False,
             log_dir = self.log_dir,
+            game_length = GAME_LENGTH,
         )
         env.py_vs_py(
             challenger = engine_chal,
@@ -138,6 +139,7 @@ class TrainPlayer:
         env = OneVsThree(
             disable_progress_bar = False,
             log_dir = self.log_dir,
+            game_length = GAME_LENGTH,
         )
         rankings = env.py_vs_py(
             challenger = engine_chal,

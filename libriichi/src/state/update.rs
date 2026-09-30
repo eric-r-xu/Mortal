@@ -149,11 +149,8 @@ impl PlayerState {
         self.oya = self.rel(oya) as u8;
         self.jikaze = must_tile!(tu8!(E) + (4 - self.oya) % 4);
         self.kyoku = kyoku - 1;
-        self.is_all_last = match self.bakaze.as_u8() {
-            tu8!(E) => false,
-            tu8!(S) => self.kyoku == 3,
-            _ => true,
-        };
+        self.is_all_last = self.bakaze == self.last_scheduled_wind() && self.kyoku == 3
+            || self.bakaze.as_u8() >= self.extension_wind().as_u8();
 
         self.scores = scores;
         self.scores.rotate_left(self.player_id as usize);

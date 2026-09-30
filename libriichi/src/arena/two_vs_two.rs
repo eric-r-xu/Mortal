@@ -7,7 +7,7 @@ use std::iter;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use flate2::Compression;
 use flate2::read::GzEncoder;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
@@ -15,21 +15,38 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 
 #[pyclass]
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct TwoVsTwo {
     pub disable_progress_bar: bool,
     pub log_dir: Option<String>,
+    /// 8 for hanchan and 4 for tonpuu.
+    pub game_length: u8,
+}
+
+impl Default for TwoVsTwo {
+    fn default() -> Self {
+        Self {
+            disable_progress_bar: false,
+            log_dir: None,
+            game_length: 8,
+        }
+    }
 }
 
 #[pymethods]
 impl TwoVsTwo {
     #[new]
-    #[pyo3(signature = (*, disable_progress_bar=false, log_dir=None))]
-    const fn new(disable_progress_bar: bool, log_dir: Option<String>) -> Self {
-        Self {
+    #[pyo3(signature = (*, disable_progress_bar=false, log_dir=None, game_length=8))]
+    fn new(disable_progress_bar: bool, log_dir: Option<String>, game_length: u8) -> Result<Self> {
+        ensure!(
+            matches!(game_length, 4 | 8),
+            "game_length must be 4 (tonpuu) or 8 (hanchan), got {game_length}",
+        );
+        Ok(Self {
             disable_progress_bar,
             log_dir,
-        }
+            game_length,
+        })
     }
 
     pub fn py_vs_py(
@@ -126,12 +143,13 @@ impl TwoVsTwo {
         }
 
         log::info!(
-            "seed: [{}, {}) w/ {:#x}, start {} sets, {} hanchans",
+            "seed: [{}, {}) w/ {:#x}, start {} sets, {} games of {} hands",
             seed_start.0,
             seed_start.0 + seed_count,
             seed_start.1,
             seed_count,
             seed_count * 2,
+            self.game_length,
         );
 
         let seeds: Vec<_> = (seed_start.0..seed_start.0 + seed_count)
@@ -162,7 +180,7 @@ impl TwoVsTwo {
             new_challenger_agent(&challenger_player_ids)?,
             new_champion_agent(&champion_player_ids)?,
         ];
-        let batch_game = BatchGame::tenhou_hanchan(self.disable_progress_bar);
+        let batch_game = BatchGame::tenhou(self.game_length, self.disable_progress_bar);
 
         let mut challenger_idx = 0;
         let mut champion_idx = 0;
@@ -244,10 +262,11 @@ impl TwoVsTwo {
         }
 
         log::info!(
-            "seed: {} w/ {:#x}, split: {}, start 1 hanchan",
+            "seed: {} w/ {:#x}, split: {}, start 1 game of {} hands",
             seed.0,
             seed.1,
-            split
+            split,
+            self.game_length,
         );
 
         let challenger_player_ids = if split == 0 { [0, 2] } else { [1, 3] };
@@ -257,7 +276,7 @@ impl TwoVsTwo {
             new_challenger_agent(&challenger_player_ids)?,
             new_champion_agent(&champion_player_ids)?,
         ];
-        let batch_game = BatchGame::tenhou_hanchan(self.disable_progress_bar);
+        let batch_game = BatchGame::tenhou(self.game_length, self.disable_progress_bar);
 
         let indexes = if split == 0 {
             [[
