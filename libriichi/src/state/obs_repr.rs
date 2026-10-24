@@ -2,7 +2,7 @@ use super::item::KawaItem;
 use super::{PlayerState, SinglePlayerTables};
 use crate::algo::sp::{Candidate, CandidateColumn};
 use crate::array::Simple2DArray;
-use crate::consts::{ACTION_SPACE, MAX_VERSION, obs_shape};
+use crate::consts::{ACTION_SPACE, MAX_VERSION, NUM_PLAYERS_U8, obs_shape};
 use crate::tile::Tile;
 use crate::{tu8, tuz};
 use std::num::NonZeroUsize;
@@ -198,7 +198,7 @@ impl<'a> ObsEncoderContext<'a> {
         self.idx += 2;
 
         if matches!(self.version, 2 | 3 | 4) {
-            let n = (state.bakaze.as_u8() - tu8!(E)).min(1) * 4 + state.kyoku;
+            let n = (state.bakaze.as_u8() - tu8!(E)).min(1) * NUM_PLAYERS_U8 + state.kyoku;
             IntegerEncoder::new(n as usize, 7)
                 .rescale(true)
                 .encode(&mut self);

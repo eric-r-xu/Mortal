@@ -259,6 +259,7 @@ mod test {
     use serde_json::{self as json, Map, Number, Value, json};
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "4-player fixtures")]
     fn json_consistency() {
         let lines = r#"
             {"type":"none"}
@@ -295,6 +296,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "4-player fixtures")]
     fn bound_check() {
         let value = json! ({
             "type": "reach",

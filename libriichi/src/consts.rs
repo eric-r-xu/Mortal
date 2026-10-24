@@ -5,6 +5,27 @@ use pyo3::prelude::*;
 /// Seats at the table: 4, or 3 when built with the `sanma` feature.
 pub const NUM_PLAYERS: usize = if cfg!(feature = "sanma") { 3 } else { 4 };
 
+pub const NUM_PLAYERS_U8: u8 = NUM_PLAYERS as u8;
+
+/// Starting points. Sanma is 35000-point start.
+pub const INIT_SCORE: i32 = if cfg!(feature = "sanma") {
+    35000
+} else {
+    25000
+};
+/// The sudden-death and agari-yame target. Sanma is 40000-point return.
+// TODO(sanma): the 40000 sudden-death target is assumed from Tenhou's sanma rules; confirm it for
+// Mahjong Soul.
+pub const END_SCORE: i32 = if cfg!(feature = "sanma") {
+    40000
+} else {
+    30000
+};
+/// Scheduled hands in a tonpuu game: one per seat.
+pub const TONPUU: u8 = NUM_PLAYERS_U8;
+/// Scheduled hands in a hanchan game: two winds.
+pub const HANCHAN: u8 = 2 * NUM_PLAYERS_U8;
+
 pub const MAX_VERSION: u32 = 4;
 
 pub const ACTION_SPACE: usize = 37 // discard | kan (choice)
@@ -16,7 +37,8 @@ pub const ACTION_SPACE: usize = 37 // discard | kan (choice)
                               + 1  // ryukyoku
                               + 1; // pass
 // = 46
-pub const GRP_SIZE: usize = 7;
+// Grand kyoku, honba and kyotaku, then one score per seat.
+pub const GRP_SIZE: usize = 3 + NUM_PLAYERS;
 
 #[pyfunction]
 #[inline]

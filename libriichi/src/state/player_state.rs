@@ -1,11 +1,10 @@
 use super::action::ActionCandidate;
 use super::item::{ChiPon, KawaItem, Sutehai};
 use crate::algo::sp::Candidate;
-use crate::consts::NUM_PLAYERS;
+use crate::consts::{HANCHAN, NUM_PLAYERS, NUM_PLAYERS_U8, TONPUU};
 use crate::hand::tiles_to_string;
 use crate::tile::Tile;
 use crate::{must_tile, tu8};
-use std::iter;
 
 use anyhow::Result;
 use derivative::Derivative;
@@ -147,16 +146,20 @@ pub struct PlayerState {
 
 #[pymethods]
 impl PlayerState {
-    /// Panics if `player_id` is outside of range [0, 3], or `game_length` is
-    /// neither 4 (tonpuu) nor 8 (hanchan).
+    /// Panics if `player_id` is not a seat at the table, or `game_length` is
+    /// neither `TONPUU` (4, or 3 in sanma) nor `HANCHAN` (8, or 6 in sanma).
     #[new]
-    #[pyo3(signature = (player_id, *, game_length=8))]
+    #[pyo3(signature = (player_id, *, game_length=HANCHAN))]
     #[must_use]
     pub fn new_with_length(player_id: u8, game_length: u8) -> Self {
-        assert!(player_id < 4, "{player_id} is not in range [0, 3]");
         assert!(
-            matches!(game_length, 4 | 8),
-            "game_length must be 4 (tonpuu) or 8 (hanchan), got {game_length}",
+            player_id < NUM_PLAYERS_U8,
+            "{player_id} is not in range [0, {}]",
+            NUM_PLAYERS - 1,
+        );
+        assert!(
+            matches!(game_length, TONPUU | HANCHAN),
+            "game_length must be {TONPUU} (tonpuu) or {HANCHAN} (hanchan), got {game_length}",
         );
         Self {
             player_id,
@@ -192,26 +195,20 @@ impl PlayerState {
             .map(|(i, _)| must_tile!(i))
             .collect::<Vec<_>>();
 
-        let zipped_kawa = self.kawa[0]
-            .iter()
-            .chain(iter::repeat(&None))
-            .zip(self.kawa[1].iter().chain(iter::repeat(&None)))
-            .zip(self.kawa[2].iter().chain(iter::repeat(&None)))
-            .zip(self.kawa[3].iter().chain(iter::repeat(&None)))
-            .take_while(|row| !matches!(row, &(((None, None), None), None)))
-            .enumerate()
-            .map(|(i, (((a, b), c), d))| {
-                format!(
-                    "{i:2}. {}\t{}\t{}\t{}",
-                    a.as_ref()
-                        .map_or_else(|| "-".to_owned(), |item| item.to_string()),
-                    b.as_ref()
-                        .map_or_else(|| "-".to_owned(), |item| item.to_string()),
-                    c.as_ref()
-                        .map_or_else(|| "-".to_owned(), |item| item.to_string()),
-                    d.as_ref()
-                        .map_or_else(|| "-".to_owned(), |item| item.to_string()),
-                )
+        // One row per discard turn, one column per seat.
+        let rows = self.kawa.iter().map(|kawa| kawa.len()).max().unwrap_or(0);
+        let zipped_kawa = (0..rows)
+            .map(|i| {
+                let cols = self
+                    .kawa
+                    .iter()
+                    .map(|kawa| {
+                        kawa.get(i)
+                            .and_then(Option::as_ref)
+                            .map_or_else(|| "-".to_owned(), |item| item.to_string())
+                    })
+                    .collect::<Vec<_>>();
+                format!("{i:2}. {}", cols.join("\t"))
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -282,14 +279,14 @@ impl PlayerState {
     #[inline]
     #[must_use]
     pub fn new(player_id: u8) -> Self {
-        Self::new_with_length(player_id, 8)
+        Self::new_with_length(player_id, HANCHAN)
     }
 
     /// The last round of the schedule: E for tonpuu, S for hanchan.
     #[inline]
     #[must_use]
     pub(super) fn last_scheduled_wind(&self) -> Tile {
-        must_tile!(tu8!(E) + self.game_length / 4 - 1)
+        must_tile!(tu8!(E) + self.game_length / NUM_PLAYERS_U8 - 1)
     }
 
     /// The sudden-death extension round: S (南入) for tonpuu, W (西入) for
@@ -297,6 +294,6 @@ impl PlayerState {
     #[inline]
     #[must_use]
     pub(super) fn extension_wind(&self) -> Tile {
-        must_tile!(tu8!(E) + self.game_length / 4)
+        must_tile!(tu8!(E) + self.game_length / NUM_PLAYERS_U8)
     }
 }

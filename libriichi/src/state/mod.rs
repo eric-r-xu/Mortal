@@ -7,7 +7,8 @@ mod player_state;
 mod sp_tables;
 mod update;
 
-#[cfg(test)]
+// These hand-built positions are 4-player.
+#[cfg(all(test, not(feature = "sanma")))]
 mod test;
 
 use crate::py_helper::add_submodule;

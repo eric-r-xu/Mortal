@@ -1,7 +1,7 @@
 use super::result::KyokuResult;
 use crate::array::Simple2DArray;
-use crate::consts::NUM_PLAYERS;
 use crate::consts::oracle_obs_shape;
+use crate::consts::{NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::{Event, EventExt};
 use crate::state::PlayerState;
 use crate::tile::Tile;
@@ -126,7 +126,7 @@ impl Board {
     /// `game_length` is 8 for hanchan and 4 for tonpuu; the players' states
     /// need it to tell which round is all-last.
     pub fn into_state(self, game_length: u8) -> BoardState {
-        let oya = self.kyoku % 4;
+        let oya = self.kyoku % NUM_PLAYERS_U8;
         let dora_indicators_full = self.dora_indicators.clone();
 
         BoardState {
@@ -254,12 +254,12 @@ impl BoardState {
             .for_each(|i| {
                 has_nagashi_mangan = true;
                 if i as u8 == self.oya {
-                    let mut dod = [-4000; 4];
-                    dod[i] = 12000;
+                    let mut dod = [-4000; NUM_PLAYERS];
+                    dod[i] = 4000 * (NUM_PLAYERS as i32 - 1);
                     vec_add_assign(&mut deltas, &dod);
                 } else {
-                    let mut dod = [-2000; 4];
-                    dod[i] = 8000;
+                    let mut dod = [-2000; NUM_PLAYERS];
+                    dod[i] = 2000 * (NUM_PLAYERS as i32 - 2) + 4000;
                     dod[self.oya as usize] = -4000;
                     vec_add_assign(&mut deltas, &dod);
                 };
@@ -274,15 +274,18 @@ impl BoardState {
                 .map(|(i, _)| i)
                 .collect();
 
-            let (plus, minus) = match tenpai_actors.len() {
-                1 => (3000, -1000),
-                2 => (1500, -1500),
-                3 => (1000, -3000),
-                // 0 | 4
-                _ => (0, 0),
+            // The 3000-point pot is split among the tenpai players and paid by
+            // the rest; nothing changes hands if everyone or no one is tenpai.
+            // TODO(sanma): the 3-seat split is assumed from this rule, not yet
+            // checked against Mahjong Soul.
+            let tenpai = tenpai_actors.len() as i32;
+            let (plus, minus) = if 0 < tenpai && tenpai < NUM_PLAYERS as i32 {
+                (3000 / tenpai, -3000 / (NUM_PLAYERS as i32 - tenpai))
+            } else {
+                (0, 0)
             };
             if plus > 0 {
-                let mut dod = [minus; 4];
+                let mut dod = [minus; NUM_PLAYERS];
                 tenpai_actors.into_iter().for_each(|i| dod[i] = plus);
                 vec_add_assign(&mut deltas, &dod);
             }
@@ -403,7 +406,7 @@ impl BoardState {
                 .enumerate()
                 .cycle()
                 .skip(single_target as usize + 1)
-                .take(3)
+                .take(NUM_PLAYERS - 1)
                 .filter_map(|(actor, v)| v.map(|point| (actor, point)))
                 .for_each(|(actor, point)| {
                     let mut deltas = [0; NUM_PLAYERS];
@@ -596,7 +599,7 @@ impl BoardState {
 
                 self.broadcast(&ev.event);
                 self.add_log(ev.clone());
-                self.tsumo_actor = (actor + 1) % 4;
+                self.tsumo_actor = (actor + 1) % NUM_PLAYERS_U8;
 
                 // 四風連打
                 if self.can_four_wind && self.check_four_wind(pai)? {

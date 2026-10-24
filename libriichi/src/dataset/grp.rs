@@ -1,5 +1,4 @@
-use crate::consts::GRP_SIZE;
-use crate::consts::NUM_PLAYERS;
+use crate::consts::{GRP_SIZE, INIT_SCORE, NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::Event;
 use crate::rankings::Rankings;
 use crate::tu8;
@@ -123,10 +122,11 @@ impl Grp {
 
                         let rk = Rankings::new(final_scores);
 
-                        // assume the sum of scores to be 100k
+                        // assume the sum of scores to be the starting points of all seats
                         let sum: i32 = final_scores.iter().sum();
-                        if sum < 100_000 {
-                            final_scores[rk.player_by_rank[0] as usize] += 100_000 - sum;
+                        let total = NUM_PLAYERS as i32 * INIT_SCORE;
+                        if sum < total {
+                            final_scores[rk.player_by_rank[0] as usize] += total - sum;
                         }
 
                         rank_by_player_opt = Some(rk.rank_by_player);
@@ -135,8 +135,8 @@ impl Grp {
                     let mut kyoku_info = array_vec!([_; GRP_SIZE]);
                     let grand_kyoku = match bakaze.as_u8() {
                         tu8!(E) => kyoku - 1,
-                        tu8!(S) => 3 + kyoku,
-                        _ => 7 + kyoku,
+                        tu8!(S) => NUM_PLAYERS_U8 - 1 + kyoku,
+                        _ => 2 * NUM_PLAYERS_U8 - 1 + kyoku,
                     };
                     kyoku_info.push(grand_kyoku as f64);
                     kyoku_info.push(honba as f64);

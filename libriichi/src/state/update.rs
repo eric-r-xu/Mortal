@@ -3,7 +3,7 @@ use super::action::ActionCandidate;
 use super::item::{ChiPon, KawaItem, Sutehai};
 use crate::algo::agari::{self, AgariCalculator};
 use crate::algo::shanten;
-use crate::consts::NUM_PLAYERS;
+use crate::consts::{NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::Event;
 use crate::rankings::Rankings;
 use crate::tile::Tile;
@@ -148,9 +148,10 @@ impl PlayerState {
         self.honba = honba;
         self.kyotaku = kyotaku;
         self.oya = self.rel(oya) as u8;
-        self.jikaze = must_tile!(tu8!(E) + (4 - self.oya) % 4);
+        self.jikaze = must_tile!(tu8!(E) + (NUM_PLAYERS_U8 - self.oya) % NUM_PLAYERS_U8);
         self.kyoku = kyoku - 1;
-        self.is_all_last = self.bakaze == self.last_scheduled_wind() && self.kyoku == 3
+        self.is_all_last = self.bakaze == self.last_scheduled_wind()
+            && self.kyoku == NUM_PLAYERS_U8 - 1
             || self.bakaze.as_u8() >= self.extension_wind().as_u8();
 
         self.scores = scores;
@@ -684,7 +685,7 @@ impl PlayerState {
     }
 
     pub(super) const fn rel(&self, actor: u8) -> usize {
-        ((actor + 4 - self.player_id) % 4) as usize
+        ((actor + NUM_PLAYERS_U8 - self.player_id) % NUM_PLAYERS_U8) as usize
     }
 
     /// Updates `tiles_seen`, `doras_seen` and `akas_seen`.
@@ -789,7 +790,7 @@ impl PlayerState {
         self.doras_owned[0] += self.tehai[next.as_usize()];
 
         // Count new dora in everyone's fuuro
-        for i in 0..4 {
+        for i in 0..NUM_PLAYERS {
             self.doras_owned[i] += self.fuuro_overview[i]
                 .iter()
                 .flatten()
@@ -806,11 +807,11 @@ impl PlayerState {
     }
 
     pub(super) fn pad_kawa_for_pon_or_daiminkan(&mut self, abs_actor: u8, abs_target: u8) {
-        let mut i = (abs_target + 1) % 4;
+        let mut i = (abs_target + 1) % NUM_PLAYERS_U8;
         while i != abs_actor {
             let rel = self.rel(i);
             self.kawa[rel].push(None);
-            i = (i + 1) % 4;
+            i = (i + 1) % NUM_PLAYERS_U8;
         }
     }
 
