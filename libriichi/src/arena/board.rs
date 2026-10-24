@@ -826,3 +826,46 @@ const UNSHUFFLED: [Tile; 136] = [
     t!(F), t!(F), t!(F), t!(F),
     t!(C), t!(C), t!(C), t!(C),
 ];
+
+/// The sanma wall: `UNSHUFFLED` without 2m-8m.
+// TODO(sanma): the red-five counts are inherited from the 4-player wall; confirm Mahjong Soul's.
+#[allow(dead_code)] // used by the 3-player board once it exists
+const SANMA_UNSHUFFLED: [Tile; 108] = {
+    let mut wall = [t!(?); 108];
+    let mut i = 0;
+    let mut n = 0;
+    while i < UNSHUFFLED.len() {
+        if !UNSHUFFLED[i].is_sanma_removed() {
+            wall[n] = UNSHUFFLED[i];
+            n += 1;
+        }
+        i += 1;
+    }
+    assert!(n == 108);
+    wall
+};
+
+#[cfg(test)]
+mod sanma_test {
+    use super::*;
+
+    #[test]
+    fn sanma_wall_has_no_manzu_middle() {
+        assert_eq!(
+            SANMA_UNSHUFFLED
+                .iter()
+                .filter(|t| t.deaka() == t!(1m))
+                .count(),
+            4
+        );
+        assert_eq!(
+            SANMA_UNSHUFFLED
+                .iter()
+                .filter(|t| t.deaka() == t!(9m))
+                .count(),
+            4
+        );
+        assert!(SANMA_UNSHUFFLED.iter().all(|t| !t.is_sanma_removed()));
+        assert_eq!(SANMA_UNSHUFFLED.iter().filter(|t| t.is_aka()).count(), 2);
+    }
+}

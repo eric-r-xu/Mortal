@@ -106,6 +106,13 @@ impl Tile {
         )
     }
 
+    /// Sanma removes 2m-8m (and the red 5m), leaving 1m and 9m.
+    #[inline]
+    #[must_use]
+    pub const fn is_sanma_removed(self) -> bool {
+        matches_tu8!(self.0, 2m | 3m | 4m | 5m | 6m | 7m | 8m | 5mr)
+    }
+
     #[inline]
     #[must_use]
     pub const fn is_unknown(self) -> bool {
@@ -288,5 +295,16 @@ mod test {
             assert_eq!(tile.prev().next(), tile.deaka());
             assert_eq!(tile.next().prev(), tile.deaka());
         });
+    }
+
+    #[test]
+    fn sanma_removed() {
+        let removed: Vec<_> = MJAI_PAI_STRINGS
+            .iter()
+            .take(37)
+            .filter(|s| s.parse::<Tile>().unwrap().is_sanma_removed())
+            .copied()
+            .collect();
+        assert_eq!(removed, ["2m", "3m", "4m", "5m", "6m", "7m", "8m", "5mr"]);
     }
 }
