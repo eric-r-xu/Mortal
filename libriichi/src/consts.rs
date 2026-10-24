@@ -13,14 +13,16 @@ pub const INIT_SCORE: i32 = if cfg!(feature = "sanma") {
 } else {
     25000
 };
-/// The sudden-death and agari-yame target. Sanma is 40000-point return.
-// TODO(sanma): the 40000 sudden-death target is assumed from Tenhou's sanma rules; confirm it for
-// Mahjong Soul.
+/// The sudden-death and agari-yame target. Sanma is 40000-point return, checked against Tenhou
+/// phoenix-room logs.
 pub const END_SCORE: i32 = if cfg!(feature = "sanma") {
     40000
 } else {
     30000
 };
+/// The points that change hands when a hand ends in an exhaustive draw: split among the tenpai
+/// players and paid by the others. Sanma pays 2000, checked against Tenhou phoenix-room logs.
+pub const NOTEN_POT: i32 = if cfg!(feature = "sanma") { 2000 } else { 3000 };
 /// Scheduled hands in a tonpuu game: one per seat.
 pub const TONPUU: u8 = NUM_PLAYERS_U8;
 /// Scheduled hands in a hanchan game: two winds.

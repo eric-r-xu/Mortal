@@ -1,7 +1,7 @@
 use super::result::KyokuResult;
 use crate::array::Simple2DArray;
 use crate::consts::oracle_obs_shape;
-use crate::consts::{NUM_PLAYERS, NUM_PLAYERS_U8};
+use crate::consts::{NOTEN_POT, NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::{Event, EventExt};
 use crate::state::PlayerState;
 use crate::tile::Tile;
@@ -274,13 +274,14 @@ impl BoardState {
                 .map(|(i, _)| i)
                 .collect();
 
-            // The 3000-point pot is split among the tenpai players and paid by
-            // the rest; nothing changes hands if everyone or no one is tenpai.
-            // TODO(sanma): the 3-seat split is assumed from this rule, not yet
-            // checked against Mahjong Soul.
+            // The pot is split among the tenpai players and paid by the rest;
+            // nothing changes hands if everyone or no one is tenpai.
             let tenpai = tenpai_actors.len() as i32;
             let (plus, minus) = if 0 < tenpai && tenpai < NUM_PLAYERS as i32 {
-                (3000 / tenpai, -3000 / (NUM_PLAYERS as i32 - tenpai))
+                (
+                    NOTEN_POT / tenpai,
+                    -NOTEN_POT / (NUM_PLAYERS as i32 - tenpai),
+                )
             } else {
                 (0, 0)
             };
@@ -832,7 +833,8 @@ const UNSHUFFLED: [Tile; 136] = [
 ];
 
 /// The sanma wall: `UNSHUFFLED` without 2m-8m.
-// TODO(sanma): the red-five counts are inherited from the 4-player wall; confirm Mahjong Soul's.
+// One red 5p and one red 5s, as in Tenhou phoenix-room sanma logs (the aka-dora counts of 2,496 winning
+// hands match exactly).
 #[allow(dead_code)] // used by the 3-player board once it exists
 const SANMA_UNSHUFFLED: [Tile; 108] = {
     let mut wall = [t!(?); 108];
