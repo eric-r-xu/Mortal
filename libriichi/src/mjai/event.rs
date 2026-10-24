@@ -1,3 +1,4 @@
+use crate::consts::NUM_PLAYERS;
 use crate::tile::Tile;
 use std::error::Error;
 use std::fmt;
@@ -23,7 +24,7 @@ pub enum Event {
 
     StartGame {
         #[serde(default)]
-        names: [String; 4],
+        names: [String; NUM_PLAYERS],
 
         /// Consists of (nonce, key).
         seed: Option<(u64, u64)>,
@@ -38,8 +39,8 @@ pub enum Event {
         kyotaku: u8,
         #[serde_as(deserialize_as = "TryFromInto<Actor>")]
         oya: u8,
-        scores: [i32; 4],
-        tehais: [[Tile; 13]; 4],
+        scores: [i32; NUM_PLAYERS],
+        tehais: [[Tile; 13]; NUM_PLAYERS],
     },
 
     Tsumo {
@@ -108,11 +109,11 @@ pub enum Event {
         #[serde_as(deserialize_as = "TryFromInto<Actor>")]
         target: u8,
 
-        deltas: Option<[i32; 4]>,
+        deltas: Option<[i32; NUM_PLAYERS]>,
         ura_markers: Option<Vec<Tile>>,
     },
     Ryukyoku {
-        deltas: Option<[i32; 4]>,
+        deltas: Option<[i32; NUM_PLAYERS]>,
     },
 
     EndKyoku,

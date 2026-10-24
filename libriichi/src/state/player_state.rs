@@ -1,6 +1,7 @@
 use super::action::ActionCandidate;
 use super::item::{ChiPon, KawaItem, Sutehai};
 use crate::algo::sp::Candidate;
+use crate::consts::NUM_PLAYERS;
 use crate::hand::tiles_to_string;
 use crate::tile::Tile;
 use crate::{must_tile, tu8};
@@ -68,7 +69,7 @@ pub struct PlayerState {
     pub(super) honba: u8,
     pub(super) kyotaku: u8,
     /// Rotated to be relative, so `scores[0]` is the score of the player.
-    pub(super) scores: [i32; 4],
+    pub(super) scores: [i32; NUM_PLAYERS],
     pub(super) rank: u8,
     /// Relative to `player_id`.
     pub(super) oya: u8,
@@ -82,19 +83,19 @@ pub struct PlayerState {
     ///
     /// Reference:
     /// <https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q1020002370>
-    pub(super) kawa: [TinyVec<[Option<KawaItem>; 24]>; 4],
-    pub(super) last_tedashis: [Option<Sutehai>; 4],
-    pub(super) riichi_sutehais: [Option<Sutehai>; 4],
+    pub(super) kawa: [TinyVec<[Option<KawaItem>; 24]>; NUM_PLAYERS],
+    pub(super) last_tedashis: [Option<Sutehai>; NUM_PLAYERS],
+    pub(super) riichi_sutehais: [Option<Sutehai>; NUM_PLAYERS],
 
     /// Using 34-D arrays here may be more efficient, but I don't want to mess up
     /// with aka doras.
-    pub(super) kawa_overview: [ArrayVec<[Tile; 24]>; 4],
-    pub(super) fuuro_overview: [ArrayVec<[ArrayVec<[Tile; 4]>; 4]>; 4],
+    pub(super) kawa_overview: [ArrayVec<[Tile; 24]>; NUM_PLAYERS],
+    pub(super) fuuro_overview: [ArrayVec<[ArrayVec<[Tile; 4]>; 4]>; NUM_PLAYERS],
     /// In this field all `Tile` are deaka'd.
-    pub(super) ankan_overview: [ArrayVec<[Tile; 4]>; 4],
+    pub(super) ankan_overview: [ArrayVec<[Tile; 4]>; NUM_PLAYERS],
 
-    pub(super) riichi_declared: [bool; 4],
-    pub(super) riichi_accepted: [bool; 4],
+    pub(super) riichi_declared: [bool; NUM_PLAYERS],
+    pub(super) riichi_accepted: [bool; NUM_PLAYERS],
 
     pub(super) at_turn: u8,
     pub(super) tiles_left: u8,
@@ -131,7 +132,7 @@ pub struct PlayerState {
 
     /// Including aka, originally for agari calc usage but also encoded as a
     /// feature to the obs.
-    pub(super) doras_owned: [u8; 4],
+    pub(super) doras_owned: [u8; NUM_PLAYERS],
     pub(super) doras_seen: u8,
 
     pub(super) akas_in_hand: [bool; 3],

@@ -2,6 +2,9 @@ use crate::py_helper::add_submodule;
 
 use pyo3::prelude::*;
 
+/// Seats at the table: 4, or 3 when built with the `sanma` feature.
+pub const NUM_PLAYERS: usize = if cfg!(feature = "sanma") { 3 } else { 4 };
+
 pub const MAX_VERSION: u32 = 4;
 
 pub const ACTION_SPACE: usize = 37 // discard | kan (choice)

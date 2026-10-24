@@ -3,6 +3,7 @@ use crate::algo::agari::AgariCalculator;
 use crate::algo::point::Point;
 use crate::algo::shanten;
 use crate::algo::sp::{InitState, SPCalculator};
+use crate::consts::NUM_PLAYERS;
 use crate::tile::Tile;
 use crate::vec_ops::vec_add_assign;
 use crate::{must_tile, tu8, tuz};
@@ -237,7 +238,7 @@ impl PlayerState {
 
             // At all-last, we are the last and we are not oya. If even a
             // haneman tsumo cannot let us avoid the last, then do not ryukyoku.
-            let mut scores = [-3000 - self.honba as i32 * 300; 4];
+            let mut scores = [-3000 - self.honba as i32 * 300; NUM_PLAYERS];
             scores[0] = 12000 + self.kyotaku as i32 * 1000 + self.honba as i32 * 300;
             scores[self.oya as usize] = -6000 - self.honba as i32 * 300;
             vec_add_assign(&mut scores, &self.scores);

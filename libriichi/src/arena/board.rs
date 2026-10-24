@@ -1,5 +1,6 @@
 use super::result::KyokuResult;
 use crate::array::Simple2DArray;
+use crate::consts::NUM_PLAYERS;
 use crate::consts::oracle_obs_shape;
 use crate::mjai::{Event, EventExt};
 use crate::state::PlayerState;
@@ -33,10 +34,10 @@ pub struct Board {
     pub honba: u8,
     /// Does not effect the kyoku seed
     pub kyotaku: u8,
-    /// [25000; 4]
-    pub scores: [i32; 4],
+    /// [25000; NUM_PLAYERS]
+    pub scores: [i32; NUM_PLAYERS],
 
-    pub haipai: [[Tile; 13]; 4],
+    pub haipai: [[Tile; 13]; NUM_PLAYERS],
     /// Goes backward (pop)
     pub yama: Vec<Tile>,
     /// Goes backward (pop)
@@ -53,12 +54,12 @@ pub struct BoardState {
     board: Board,
     // Absolute seat, with the oya of E1 always being 0
     oya: u8,
-    player_states: [PlayerState; 4],
+    player_states: [PlayerState; NUM_PLAYERS],
 
     can_renchan: bool,
     has_hora: bool,
     has_abortive_ryukyoku: bool,
-    kyoku_deltas: [i32; 4],
+    kyoku_deltas: [i32; NUM_PLAYERS],
 
     #[derivative(Default(value = "70"))]
     tiles_left: u8,
@@ -68,15 +69,15 @@ pub struct BoardState {
     need_new_dora_at_discard: Option<()>,
     need_new_dora_at_tsumo: Option<()>,
     riichi_to_be_accepted: Option<u8>,
-    #[derivative(Default(value = "[true; 4]"))]
-    can_nagashi_mangan: [bool; 4],
+    #[derivative(Default(value = "[true; NUM_PLAYERS]"))]
+    can_nagashi_mangan: [bool; NUM_PLAYERS],
     #[derivative(Default(value = "true"))]
     can_four_wind: bool,
     four_wind_tile: Option<Tile>,
     accepted_riichis: u8,
     kans: u8,
     check_four_kan: bool,
-    paos: [Option<u8>; 4],
+    paos: [Option<u8>; NUM_PLAYERS],
 
     log: Vec<EventExt>,
 
@@ -85,7 +86,7 @@ pub struct BoardState {
 }
 
 pub struct AgentContext<'a> {
-    pub player_states: &'a [PlayerState; 4],
+    pub player_states: &'a [PlayerState; NUM_PLAYERS],
     pub log: &'a [EventExt],
 }
 
@@ -140,7 +141,7 @@ impl Board {
 
 impl BoardState {
     /// Returns iff any player on the board can act or the kyoku has ended.
-    pub fn poll(&mut self, mut reactions: [EventExt; 4]) -> Result<Poll> {
+    pub fn poll(&mut self, mut reactions: [EventExt; NUM_PLAYERS]) -> Result<Poll> {
         loop {
             let poll = self.step(&reactions)?;
             match poll {
@@ -241,7 +242,7 @@ impl BoardState {
     }
 
     fn exhaustive_ryukyoku(&mut self) {
-        let mut deltas = [0; 4];
+        let mut deltas = [0; NUM_PLAYERS];
         self.can_renchan = self.player_states[self.oya as usize].shanten() == 0;
 
         let mut has_nagashi_mangan = false;
@@ -265,7 +266,7 @@ impl BoardState {
             });
 
         if !has_nagashi_mangan {
-            let tenpai_actors: ArrayVec<[_; 4]> = self
+            let tenpai_actors: ArrayVec<[_; NUM_PLAYERS]> = self
                 .player_states
                 .iter()
                 .enumerate()
@@ -369,7 +370,7 @@ impl BoardState {
         &mut self,
         single_actor: u8,
         single_target: u8,
-        reactions: &[EventExt; 4],
+        reactions: &[EventExt; NUM_PLAYERS],
     ) -> Result<()> {
         self.has_hora = true;
 
@@ -405,7 +406,7 @@ impl BoardState {
                 .take(3)
                 .filter_map(|(actor, v)| v.map(|point| (actor, point)))
                 .for_each(|(actor, point)| {
-                    let mut deltas = [0; 4];
+                    let mut deltas = [0; NUM_PLAYERS];
                     if let Some(pao_target) = self.paos[actor] {
                         // As per [Tenhou's rule](https://tenhou.net/man/#RULE):
                         //
@@ -441,7 +442,7 @@ impl BoardState {
         }
 
         let point = points[single_actor as usize].unwrap();
-        let mut deltas = [0; 4];
+        let mut deltas = [0; NUM_PLAYERS];
         if let Some(pao_target) = self.paos[single_actor as usize] {
             // For pao to happen, the agari must have at least 1 yakuman so ron
             // point and sum of tsumo point should be equal.
@@ -505,14 +506,14 @@ impl BoardState {
     #[inline]
     fn abortive_ryukyoku(&mut self) {
         let ryukyoku = Event::Ryukyoku {
-            deltas: Some([0; 4]),
+            deltas: Some([0; NUM_PLAYERS]),
         };
         self.add_log_no_meta(ryukyoku);
         self.has_abortive_ryukyoku = true;
         // No need to broadcast
     }
 
-    fn step(&mut self, reactions: &[EventExt; 4]) -> Result<Poll> {
+    fn step(&mut self, reactions: &[EventExt; NUM_PLAYERS]) -> Result<Poll> {
         if self.tiles_left == 70 {
             self.haipai()?;
             return Ok(Poll::InGame);

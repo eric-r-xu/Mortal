@@ -1,6 +1,7 @@
 use super::board::{Board, BoardState, Poll};
 use super::result::GameResult;
 use crate::agent::BatchAgent;
+use crate::consts::NUM_PLAYERS;
 use crate::mjai::EventExt;
 use std::time::Duration;
 use std::{array, mem};
@@ -12,7 +13,7 @@ use ndarray::prelude::*;
 pub struct BatchGame {
     /// 8 for hanchan and 4 for tonpuu
     pub length: u8,
-    pub init_scores: [i32; 4],
+    pub init_scores: [i32; NUM_PLAYERS],
     pub disable_progress_bar: bool,
 }
 
@@ -28,18 +29,18 @@ pub struct Index {
 struct Game {
     length: u8,
     seed: (u64, u64),
-    indexes: [Index; 4],
+    indexes: [Index; NUM_PLAYERS],
 
-    oracle_obs_versions: [Option<u32>; 4],
-    invisible_state_cache: [Option<Array2<f32>>; 4],
+    oracle_obs_versions: [Option<u32>; NUM_PLAYERS],
+    invisible_state_cache: [Option<Array2<f32>>; NUM_PLAYERS],
 
-    last_reactions: [EventExt; 4], // cached for poll phase
+    last_reactions: [EventExt; NUM_PLAYERS], // cached for poll phase
 
     board: BoardState,
     kyoku: u8,
     honba: u8,
     kyotaku: u8,
-    scores: [i32; 4],
+    scores: [i32; NUM_PLAYERS],
     game_log: Vec<Vec<EventExt>>,
 
     kyoku_started: bool,
@@ -259,7 +260,7 @@ impl BatchGame {
     pub fn run(
         &self,
         agents: &mut [Box<dyn BatchAgent>],
-        indexes: &[[Index; 4]],
+        indexes: &[[Index; NUM_PLAYERS]],
         seeds: &[(u64, u64)],
     ) -> Result<Vec<GameResult>> {
         ensure!(!agents.is_empty());
@@ -276,7 +277,7 @@ impl BatchGame {
             .zip(seeds)
             .enumerate()
             .map(|(game_idx, (idxs, &seed))| {
-                let mut oracle_obs_versions = [None; 4];
+                let mut oracle_obs_versions = [None; NUM_PLAYERS];
                 for (i, idx) in idxs.iter().enumerate() {
                     agents[idx.agent_idx].start_game(idx.player_id_idx)?;
                     oracle_obs_versions[i] = agents[idx.agent_idx].oracle_obs_version();

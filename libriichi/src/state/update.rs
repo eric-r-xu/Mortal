@@ -3,6 +3,7 @@ use super::action::ActionCandidate;
 use super::item::{ChiPon, KawaItem, Sutehai};
 use crate::algo::agari::{self, AgariCalculator};
 use crate::algo::shanten;
+use crate::consts::NUM_PLAYERS;
 use crate::mjai::Event;
 use crate::rankings::Rankings;
 use crate::tile::Tile;
@@ -130,8 +131,8 @@ impl PlayerState {
         honba: u8,
         kyotaku: u8,
         oya: u8,
-        scores: [i32; 4],
-        tehais: [[Tile; 13]; 4],
+        scores: [i32; NUM_PLAYERS],
+        tehais: [[Tile; 13]; NUM_PLAYERS],
     ) -> Result<()> {
         self.tehai.fill(0);
         self.waits.fill(false);
@@ -960,7 +961,7 @@ impl PlayerState {
         self.rank = self.get_rank(self.scores);
     }
 
-    pub(super) fn get_rank(&self, mut scores_rel: [i32; 4]) -> u8 {
+    pub(super) fn get_rank(&self, mut scores_rel: [i32; NUM_PLAYERS]) -> u8 {
         let scores_abs = {
             scores_rel.rotate_right(self.player_id as usize);
             scores_rel
