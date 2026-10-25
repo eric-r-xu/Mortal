@@ -111,6 +111,9 @@ pub struct PlayerState {
     pub(super) ankan_candidates: ArrayVec<[Tile; 3]>,
     pub(super) kakan_candidates: ArrayVec<[Tile; 3]>,
     pub(super) chankan_chance: Option<()>,
+    /// Like `chankan_chance` for a ron on an opponent's kita, which keeps
+    /// ippatsu but is not chankan.
+    pub(super) kita_ron_chance: Option<()>,
 
     pub(super) can_w_riichi: bool,
     pub(super) is_w_riichi: bool,

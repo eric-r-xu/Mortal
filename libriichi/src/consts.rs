@@ -40,8 +40,9 @@ pub const ACTION_SPACE: usize = 37 // discard | kan (choice)
                               + 1  // kan (decide)
                               + 1  // agari
                               + 1  // ryukyoku
-                              + 1; // pass
-// = 46
+                              + 1  // pass
+                              + if cfg!(feature = "sanma") { 1 } else { 0 }; // kita
+// = 46, or 47 in sanma
 // Grand kyoku, honba and kyotaku, then one score per seat.
 pub const GRP_SIZE: usize = 3 + NUM_PLAYERS;
 

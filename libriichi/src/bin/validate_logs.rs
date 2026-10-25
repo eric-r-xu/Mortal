@@ -176,6 +176,13 @@ fn process_path(path: &Path) -> Result<()> {
                     states[*actor as usize].brief_info(),
                 );
             }
+            Event::Nukidora { actor, .. } => {
+                ensure!(
+                    cans[*actor as usize].can_kita,
+                    "fails can_kita at line {line}\naction: {ev:?}\nstate:\n{}",
+                    states[*actor as usize].brief_info(),
+                );
+            }
             Event::Reach { actor } => {
                 ensure!(
                     cans[*actor as usize].can_riichi,

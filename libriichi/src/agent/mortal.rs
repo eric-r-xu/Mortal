@@ -2,7 +2,7 @@ use super::{BatchAgent, InvisibleState};
 use crate::consts::ACTION_SPACE;
 use crate::mjai::{Event, EventExt, Metadata};
 use crate::state::PlayerState;
-use crate::{must_tile, tu8};
+use crate::{must_tile, t, tu8};
 use std::mem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -566,6 +566,12 @@ impl BatchAgent for MortalBatchAgent {
                 );
 
                 Event::Ryukyoku { deltas: None }
+            }
+
+            46 => {
+                ensure!(cans.can_kita, "failed kita check: {}", state.brief_info());
+
+                Event::Nukidora { actor, pai: t!(N) }
             }
 
             // 45

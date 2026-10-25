@@ -421,7 +421,7 @@ impl<'a> ObsEncoderContext<'a> {
 
             // pass
             if !self.at_kan_select {
-                self.mask[ACTION_SPACE - 1] = true;
+                self.mask[45] = true;
             } else if cans.can_daiminkan {
                 self.mask[tile_id] = true;
             }
@@ -560,6 +560,11 @@ impl<'a> ObsEncoderContext<'a> {
             }
         }
         self.idx += 1;
+
+        // TODO: a can_kita feature channel belongs to the sanma obs version.
+        if cans.can_kita && !self.at_kan_select {
+            self.mask[46] = true;
+        }
 
         if self.version == 4 {
             if let Ok(SinglePlayerTables { max_ev_table }) = state.single_player_tables() {

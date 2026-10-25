@@ -128,3 +128,108 @@ fn kita_ends_the_first_go_around() {
     assert!(!ps.can_w_riichi);
     assert!(!ps.last_cans.can_ryukyoku);
 }
+
+#[test]
+fn kita_is_offered_after_an_own_draw_with_a_north() {
+    let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","N","N"]"#;
+    let mut ps = start(0, hand, "C");
+    tsumo(&mut ps, 0, "5s");
+    assert!(ps.last_cans.can_kita);
+    ps.validate_reaction_json(r#"{"type":"nukidora","actor":0,"pai":"N"}"#)
+        .unwrap();
+
+    // Again after the replacement draw, while a North is left.
+    kita(&mut ps, 0);
+    tsumo(&mut ps, 0, "6s");
+    assert!(ps.last_cans.can_kita);
+    kita(&mut ps, 0);
+    tsumo(&mut ps, 0, "7s");
+    assert!(!ps.last_cans.can_kita);
+    ps.validate_reaction_json(r#"{"type":"nukidora","actor":0,"pai":"N"}"#)
+        .unwrap_err();
+}
+
+#[test]
+fn no_kita_after_a_pon_or_on_the_last_draw() {
+    let hand = r#"["1p","1p","3p","4p","5p","6p","7p","8p","9p","1s","2s","3s","N"]"#;
+    let mut ps = start(1, hand, "C");
+    tsumo(&mut ps, 0, "?");
+    ps.update_json(r#"{"type":"dahai","actor":0,"pai":"1p","tsumogiri":true}"#)
+        .unwrap();
+    ps.update_json(r#"{"type":"pon","actor":1,"target":0,"pai":"1p","consumed":["1p","1p"]}"#)
+        .unwrap();
+    assert!(ps.last_cans.can_discard);
+    assert!(!ps.last_cans.can_kita);
+
+    let mut ps = start(1, hand, "C");
+    for _ in 0..LIVE_WALL - 1 {
+        tsumo(&mut ps, 0, "?");
+    }
+    tsumo(&mut ps, 1, "N");
+    assert_eq!(ps.tiles_left, 0);
+    assert!(!ps.last_cans.can_kita);
+}
+
+#[test]
+fn in_riichi_only_the_drawn_north_can_be_set_aside() {
+    // 123456789p 123s with a North tanki, already in riichi.
+    let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","3s","N"]"#;
+    let mut ps = start(0, hand, "C");
+    tsumo(&mut ps, 0, "W");
+    ps.update_json(r#"{"type":"reach","actor":0}"#).unwrap();
+    ps.update_json(r#"{"type":"dahai","actor":0,"pai":"W","tsumogiri":true}"#)
+        .unwrap();
+    ps.update_json(r#"{"type":"reach_accepted","actor":0}"#)
+        .unwrap();
+
+    tsumo(&mut ps, 0, "9s");
+    assert!(!ps.last_cans.can_kita, "the North in hand is the wait");
+    ps.update_json(r#"{"type":"dahai","actor":0,"pai":"9s","tsumogiri":true}"#)
+        .unwrap();
+
+    // A drawn North would be a win here, so make the wait something else.
+    let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","3s","E"]"#;
+    let mut ps = start(0, hand, "C");
+    tsumo(&mut ps, 0, "W");
+    ps.update_json(r#"{"type":"reach","actor":0}"#).unwrap();
+    ps.update_json(r#"{"type":"dahai","actor":0,"pai":"W","tsumogiri":true}"#)
+        .unwrap();
+    ps.update_json(r#"{"type":"reach_accepted","actor":0}"#)
+        .unwrap();
+    tsumo(&mut ps, 0, "N");
+    assert!(ps.last_cans.can_kita);
+}
+
+#[test]
+fn an_opponent_kita_ends_ippatsu_unless_it_is_ronned() {
+    // In riichi on a North tanki, with ippatsu.
+    let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","3s","N"]"#;
+    let riichi = |ps: &mut PlayerState| {
+        tsumo(ps, 0, "W");
+        ps.update_json(r#"{"type":"reach","actor":0}"#).unwrap();
+        ps.update_json(r#"{"type":"dahai","actor":0,"pai":"W","tsumogiri":true}"#)
+            .unwrap();
+        ps.update_json(r#"{"type":"reach_accepted","actor":0}"#)
+            .unwrap();
+        assert!(ps.at_ippatsu);
+    };
+
+    // A kita we can ron keeps ippatsu for that ron, then it is gone.
+    let mut ps = start(0, hand, "C");
+    riichi(&mut ps);
+    tsumo(&mut ps, 1, "?");
+    kita(&mut ps, 1);
+    assert!(ps.last_cans.can_ron_agari);
+    assert!(ps.at_ippatsu);
+    tsumo(&mut ps, 1, "?");
+    assert!(!ps.at_ippatsu);
+
+    // Waiting on something else, the kita ends ippatsu at once.
+    let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","3s","E"]"#;
+    let mut ps = start(0, hand, "C");
+    riichi(&mut ps);
+    tsumo(&mut ps, 1, "?");
+    kita(&mut ps, 1);
+    assert!(!ps.last_cans.can_ron_agari);
+    assert!(!ps.at_ippatsu);
+}
