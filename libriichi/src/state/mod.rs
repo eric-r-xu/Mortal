@@ -10,6 +10,8 @@ mod update;
 // These hand-built positions are 4-player.
 #[cfg(all(test, not(feature = "sanma")))]
 mod test;
+#[cfg(all(test, feature = "sanma"))]
+mod test_sanma;
 
 use crate::py_helper::add_submodule;
 pub use action::ActionCandidate;

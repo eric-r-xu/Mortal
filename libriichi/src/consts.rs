@@ -23,6 +23,9 @@ pub const END_SCORE: i32 = if cfg!(feature = "sanma") {
 /// The points that change hands when a hand ends in an exhaustive draw: split among the tenpai
 /// players and paid by the others. Sanma pays 2000, checked against Tenhou phoenix-room logs.
 pub const NOTEN_POT: i32 = if cfg!(feature = "sanma") { 2000 } else { 3000 };
+/// Draws a hand allows from the live wall: 70, or 55 in sanma (108 tiles, less the 14-tile dead
+/// wall and the 39 dealt). Every exhaustive draw in the Tenhou phoenix-room sanma logs had 55.
+pub const LIVE_WALL: u8 = if cfg!(feature = "sanma") { 55 } else { 70 };
 /// Scheduled hands in a tonpuu game: one per seat.
 pub const TONPUU: u8 = NUM_PLAYERS_U8;
 /// Scheduled hands in a hanchan game: two winds.

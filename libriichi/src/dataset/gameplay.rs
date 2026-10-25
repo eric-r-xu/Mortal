@@ -321,7 +321,10 @@ impl Gameplay {
                         *yama_idx += 1;
                     }
                 }
-                Event::Ankan { .. } | Event::Kakan { .. } | Event::Daiminkan { .. } => {
+                Event::Ankan { .. }
+                | Event::Kakan { .. }
+                | Event::Daiminkan { .. }
+                | Event::Nukidora { .. } => {
                     *from_rinshan = true;
                 }
                 _ => (),

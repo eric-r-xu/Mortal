@@ -90,6 +90,13 @@ pub enum Event {
         actor: u8,
         consumed: [Tile; 4],
     },
+    /// Sanma only: the actor sets a North aside as a bonus dora (kita), then
+    /// draws a replacement tile. This is an extension to mjai.
+    Nukidora {
+        #[serde_as(deserialize_as = "TryFromInto<Actor>")]
+        actor: u8,
+        pai: Tile,
+    },
     Dora {
         dora_marker: Tile,
     },
@@ -169,6 +176,7 @@ impl Event {
             | Self::Daiminkan { actor, .. }
             | Self::Kakan { actor, .. }
             | Self::Ankan { actor, .. }
+            | Self::Nukidora { actor, .. }
             | Self::Reach { actor, .. }
             | Self::ReachAccepted { actor, .. }
             | Self::Hora { actor, .. } => Some(actor),

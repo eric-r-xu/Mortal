@@ -94,7 +94,6 @@
 
 mod arena;
 mod array;
-mod consts;
 mod dataset;
 mod macros;
 mod py_helper;
@@ -103,6 +102,7 @@ mod vec_ops;
 
 // pub for bins
 pub mod chi_type;
+pub mod consts;
 pub mod mjai;
 pub mod stat;
 pub mod state;

@@ -133,6 +133,9 @@ pub struct PlayerState {
     /// feature to the obs.
     pub(super) doras_owned: [u8; NUM_PLAYERS],
     pub(super) doras_seen: u8,
+    /// Norths each seat has set aside (kita), relative to `player_id`. Each
+    /// one is a dora for its owner. Always 0 outside sanma.
+    pub(super) kitas: [u8; NUM_PLAYERS],
 
     pub(super) akas_in_hand: [bool; 3],
 

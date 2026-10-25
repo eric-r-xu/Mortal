@@ -1,6 +1,8 @@
 use riichi::chi_type::ChiType;
+use riichi::consts::{NUM_PLAYERS, NUM_PLAYERS_U8};
 use riichi::mjai::Event;
 use riichi::state::{ActionCandidate, PlayerState};
+use std::array;
 use std::convert::identity;
 use std::env;
 use std::fs::File;
@@ -72,13 +74,8 @@ fn process_path(path: &Path) -> Result<()> {
         .map(|l| Ok(json::from_str(l)?))
         .collect::<Result<_>>()?;
 
-    let mut states = [
-        PlayerState::new(0),
-        PlayerState::new(1),
-        PlayerState::new(2),
-        PlayerState::new(3),
-    ];
-    let mut cans = [ActionCandidate::default(); 4];
+    let mut states: [_; NUM_PLAYERS] = array::from_fn(|i| PlayerState::new(i as u8));
+    let mut cans = [ActionCandidate::default(); NUM_PLAYERS];
 
     for (idx, ev) in events.iter().enumerate() {
         let line = idx + 1;
@@ -104,7 +101,7 @@ fn process_path(path: &Path) -> Result<()> {
                 target,
             } => {
                 ensure!(
-                    (target + 1) % 4 == *actor,
+                    (target + 1) % NUM_PLAYERS_U8 == *actor,
                     "chi from non-kamicha at line {}\naction: {ev:?}\nstate:\n{}",
                     line,
                     states[*actor as usize].brief_info(),

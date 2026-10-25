@@ -94,7 +94,10 @@ impl Invisible {
                     }
                     unknown_tiles[pai.as_usize()] -= 1;
                 }
-                Event::Ankan { .. } | Event::Kakan { .. } | Event::Daiminkan { .. } => {
+                Event::Ankan { .. }
+                | Event::Kakan { .. }
+                | Event::Daiminkan { .. }
+                | Event::Nukidora { .. } => {
                     from_rinshan = true;
                 }
                 Event::Dora { dora_marker } => {
