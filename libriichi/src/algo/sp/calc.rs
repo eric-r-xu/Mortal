@@ -770,6 +770,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "4-player fixtures")]
     fn nanikiru() {
         let mut calc = SPCalculator {
             tehai_len_div3: 4,
@@ -950,6 +951,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "4-player fixtures")]
     fn tsumo_only() {
         let calc = SPCalculator {
             tehai_len_div3: 4,

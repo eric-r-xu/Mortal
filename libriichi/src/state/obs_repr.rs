@@ -2,7 +2,10 @@ use super::item::KawaItem;
 use super::{PlayerState, SinglePlayerTables};
 use crate::algo::sp::{Candidate, CandidateColumn};
 use crate::array::Simple2DArray;
-use crate::consts::{ACTION_SPACE, MAX_VERSION, NUM_PLAYERS_U8, obs_shape};
+use crate::consts::{
+    ACTION_SPACE, END_SCORE, HANCHAN, LIVE_WALL, MAX_VERSION, NUM_PLAYERS, NUM_PLAYERS_U8,
+    obs_shape,
+};
 use crate::tile::Tile;
 use crate::{tu8, tuz};
 use std::num::NonZeroUsize;
@@ -89,7 +92,7 @@ impl IntegerEncoder {
                     ctx.idx += intervals - 1;
                 }
             }
-            4 => {
+            4 | 5 => {
                 debug_assert!(self.one_hot || self.rescale);
 
                 if self.one_hot {
@@ -110,6 +113,11 @@ impl IntegerEncoder {
 impl<'a> ObsEncoderContext<'a> {
     fn new(state: &'a PlayerState, version: u32, at_kan_select: bool) -> Self {
         assert!(version <= MAX_VERSION);
+        assert_eq!(
+            version == 5,
+            cfg!(feature = "sanma"),
+            "version 5 is the sanma observation, and sanma builds support only version 5",
+        );
         let shape = obs_shape(version);
         let arr = Simple2DArray::new(shape.0);
         let mask = Array1::default(ACTION_SPACE);
@@ -160,36 +168,41 @@ impl<'a> ObsEncoderContext<'a> {
                     self.arr.fill(self.idx, v);
                     self.idx += 1;
                 }
+                5 => {
+                    let v = score.clamp(0, END_SCORE) as f32 / END_SCORE as f32;
+                    self.arr.fill(self.idx, v);
+                    self.idx += 1;
+                }
                 _ => (),
             }
         }
 
         let n = state.rank as usize;
         self.arr.fill(self.idx + n, 1.);
-        self.idx += 4;
+        self.idx += NUM_PLAYERS;
 
         let n = state.kyoku as usize;
         match self.version {
             // for v1, this was a mistake, it actually only uses 3 channels.
             1 => self.arr.fill_rows(self.idx, n, 1.),
-            2 | 3 | 4 => self.arr.fill(self.idx + n, 1.),
+            2..=5 => self.arr.fill(self.idx + n, 1.),
             _ => unreachable!(),
         }
-        self.idx += 4;
+        self.idx += NUM_PLAYERS;
 
         let cap = match self.version {
-            1 | 4 => 10,
+            1 | 4 | 5 => 10,
             2 | 3 => 6,
             _ => unreachable!(),
         };
         let n = state.honba as usize;
         IntegerEncoder::new(n, cap)
-            .rescale(self.version == 4)
+            .rescale(self.version >= 4)
             .rbf_intervals(3)
             .encode(&mut self);
         let n = state.kyotaku as usize;
         IntegerEncoder::new(n, cap)
-            .rescale(self.version == 4)
+            .rescale(self.version >= 4)
             .rbf_intervals(3)
             .encode(&mut self);
 
@@ -197,9 +210,9 @@ impl<'a> ObsEncoderContext<'a> {
         self.arr.assign(self.idx + 1, state.jikaze.as_usize(), 1.);
         self.idx += 2;
 
-        if matches!(self.version, 2 | 3 | 4) {
+        if matches!(self.version, 2..=5) {
             let n = (state.bakaze.as_u8() - tu8!(E)).min(1) * NUM_PLAYERS_U8 + state.kyoku;
-            IntegerEncoder::new(n as usize, 7)
+            IntegerEncoder::new(n as usize, HANCHAN as usize - 1)
                 .rescale(true)
                 .encode(&mut self);
         }
@@ -220,7 +233,7 @@ impl<'a> ObsEncoderContext<'a> {
         self.idx += (18 - state.kawa[0].len().min(18)) * SELF_KAWA_ITEM_CHANNELS;
 
         let max_kawa_len = state.kawa.iter().map(|k| k.len()).max().unwrap();
-        if matches!(self.version, 3 | 4) {
+        if matches!(self.version, 3..=5) {
             for (turn, kawa_item) in state.kawa[0].iter().enumerate() {
                 if let Some(kawa_item) = kawa_item {
                     let sutehai = kawa_item.sutehai;
@@ -258,7 +271,7 @@ impl<'a> ObsEncoderContext<'a> {
                     }
                     self.idx += 6;
                 }
-                3 | 4 => {
+                3..=5 => {
                     for (turn, kawa_item) in player_kawa.iter().enumerate() {
                         if let Some(kawa_item) = kawa_item {
                             let sutehai = kawa_item.sutehai;
@@ -279,7 +292,7 @@ impl<'a> ObsEncoderContext<'a> {
             }
         }
 
-        let v = state.tiles_left as f32 / 69.;
+        let v = state.tiles_left as f32 / (LIVE_WALL - 1) as f32;
         self.arr.fill(self.idx, v);
         self.idx += 1;
 
@@ -290,8 +303,10 @@ impl<'a> ObsEncoderContext<'a> {
                 .encode(&mut self);
         }
 
-        let doras_unseen = state.dora_indicators.len() as u8 * 4 + 3 - state.doras_seen;
-        IntegerEncoder::new(doras_unseen as usize, 5 * 4 + 3)
+        // Red fives: 3, or 2 in sanma, which has no 5m.
+        let akas = if cfg!(feature = "sanma") { 2 } else { 3 };
+        let doras_unseen = state.dora_indicators.len() as u8 * 4 + akas - state.doras_seen;
+        IntegerEncoder::new(doras_unseen as usize, 5 * 4 + akas as usize)
             .rescale(true)
             .rbf_intervals(4)
             .encode(&mut self);
@@ -328,7 +343,15 @@ impl<'a> ObsEncoderContext<'a> {
             self.idx += 1;
         }
 
-        if matches!(self.version, 2 | 3 | 4) {
+        if self.version == 5 {
+            for &count in &state.kitas {
+                IntegerEncoder::new(count as usize, 4)
+                    .rescale(true)
+                    .encode(&mut self);
+            }
+        }
+
+        if matches!(self.version, 2..=5) {
             for (tid, count) in state.tiles_seen.iter().copied().enumerate() {
                 self.arr.assign(self.idx, tid, count as f32 / 4.);
             }
@@ -371,13 +394,13 @@ impl<'a> ObsEncoderContext<'a> {
             .enumerate()
             .filter(|&(_, &b)| b)
             .for_each(|(i, _)| self.arr.fill(self.idx + i, 1.));
-        self.idx += 3;
+        self.idx += NUM_PLAYERS - 1;
         state.riichi_accepted[1..]
             .iter()
             .enumerate()
             .filter(|&(_, &b)| b)
             .for_each(|(i, _)| self.arr.fill(self.idx + i, 1.));
-        self.idx += 3;
+        self.idx += NUM_PLAYERS - 1;
 
         state
             .waits
@@ -483,25 +506,28 @@ impl<'a> ObsEncoderContext<'a> {
         }
         self.idx += 1;
 
-        if cans.can_chi_low {
-            self.arr.fill(self.idx, 1.);
-            if !self.at_kan_select {
-                self.mask[38] = true;
+        // Sanma has no chi, so version 5 has no chi channels.
+        if self.version != 5 {
+            if cans.can_chi_low {
+                self.arr.fill(self.idx, 1.);
+                if !self.at_kan_select {
+                    self.mask[38] = true;
+                }
             }
-        }
-        if cans.can_chi_mid {
-            self.arr.fill(self.idx + 1, 1.);
-            if !self.at_kan_select {
-                self.mask[39] = true;
+            if cans.can_chi_mid {
+                self.arr.fill(self.idx + 1, 1.);
+                if !self.at_kan_select {
+                    self.mask[39] = true;
+                }
             }
-        }
-        if cans.can_chi_high {
-            self.arr.fill(self.idx + 2, 1.);
-            if !self.at_kan_select {
-                self.mask[40] = true;
+            if cans.can_chi_high {
+                self.arr.fill(self.idx + 2, 1.);
+                if !self.at_kan_select {
+                    self.mask[40] = true;
+                }
             }
+            self.idx += 3;
         }
-        self.idx += 3;
 
         if cans.can_pon {
             self.arr.fill(self.idx, 1.);
@@ -561,9 +587,16 @@ impl<'a> ObsEncoderContext<'a> {
         }
         self.idx += 1;
 
-        // TODO: a can_kita feature channel belongs to the sanma obs version.
-        if cans.can_kita && !self.at_kan_select {
-            self.mask[46] = true;
+        if cans.can_kita {
+            if self.version == 5 {
+                self.arr.fill(self.idx, 1.);
+            }
+            if !self.at_kan_select {
+                self.mask[46] = true;
+            }
+        }
+        if self.version == 5 {
+            self.idx += 1;
         }
 
         if self.version == 4 {
@@ -626,6 +659,11 @@ impl<'a> ObsEncoderContext<'a> {
                 // Skip everything else.
                 self.idx += 2 * 34 + 2 + 3 * MAX_NUM_TURNS;
             }
+        } else if self.version == 5 {
+            // TODO: the single-player EV tables assume 4 players (draws per
+            // turn, payments, the tile set), so version 5 keeps their channels
+            // empty until a sanma calculator exists.
+            self.idx += 2 + 2 * 34 + 2 + 3 * MAX_NUM_TURNS;
         }
 
         assert_eq!(self.idx, self.arr.rows());

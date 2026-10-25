@@ -129,7 +129,11 @@ impl Tile {
         let kind = tile.0 / 9;
         let num = tile.0 % 9;
 
-        if kind < 3 {
+        if cfg!(feature = "sanma") && kind == 0 {
+            // Sanma has only 1m and 9m, which follow each other as doras.
+            // (Sanma has no chi, so no run relies on this.)
+            Self(8 - num)
+        } else if kind < 3 {
             Self(kind * 9 + (num + 1) % 9)
         } else if num < 4 {
             Self(3 * 9 + (num + 1) % 4)
@@ -147,7 +151,9 @@ impl Tile {
         let tile = self.deaka();
         let kind = tile.0 / 9;
         let num = tile.0 % 9;
-        if kind < 3 {
+        if cfg!(feature = "sanma") && kind == 0 {
+            Self(8 - num)
+        } else if kind < 3 {
             Self(kind * 9 + (num + 9 - 1) % 9)
         } else if num < 4 {
             Self(3 * 9 + (num + 4 - 1) % 4)
@@ -165,9 +171,12 @@ impl Tile {
         let tile = self.deaka();
         let tid = tile.0;
         let kind = tid / 9;
+        // Sanma has only 1m and 9m, so it swaps pinzu and souzu instead.
         let ret = match kind {
-            0 => Self(tid + 9),
-            1 => Self(tid - 9),
+            0 if !cfg!(feature = "sanma") => Self(tid + 9),
+            1 if !cfg!(feature = "sanma") => Self(tid - 9),
+            1 if cfg!(feature = "sanma") => Self(tid + 9),
+            2 if cfg!(feature = "sanma") => Self(tid - 9),
             _ => tile,
         };
         if self.is_aka() { ret.akaize() } else { ret }
@@ -306,5 +315,28 @@ mod test {
             .copied()
             .collect();
         assert_eq!(removed, ["2m", "3m", "4m", "5m", "6m", "7m", "8m", "5mr"]);
+    }
+
+    #[test]
+    fn augment() {
+        MJAI_PAI_STRINGS.iter().take(38).for_each(|&s| {
+            let tile: Tile = s.parse().unwrap();
+            assert_eq!(tile.augment().augment(), tile);
+            assert_eq!(tile.augment().is_aka(), tile.is_aka());
+            if cfg!(feature = "sanma") {
+                assert_eq!(tile.augment().is_sanma_removed(), tile.is_sanma_removed());
+            }
+        });
+    }
+
+    #[cfg(feature = "sanma")]
+    #[test]
+    fn sanma_augment_swaps_pinzu_and_souzu() {
+        assert_eq!(t!(1m).augment(), t!(1m));
+        assert_eq!(t!(9m).augment(), t!(9m));
+        assert_eq!(t!(3p).augment(), t!(3s));
+        assert_eq!(t!(7s).augment(), t!(7p));
+        assert_eq!(t!(5pr).augment(), t!(5sr));
+        assert_eq!(t!(N).augment(), t!(N));
     }
 }

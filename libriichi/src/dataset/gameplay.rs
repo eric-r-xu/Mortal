@@ -1,5 +1,6 @@
 use super::{Grp, Invisible};
 use crate::chi_type::ChiType;
+use crate::consts::{NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::Event;
 use crate::state::PlayerState;
 use std::array;
@@ -71,7 +72,7 @@ struct LoaderContext<'a> {
     kyoku_idx: usize,
 
     // fields below are only used for oracle
-    opponent_states: [PlayerState; 3],
+    opponent_states: [PlayerState; NUM_PLAYERS - 1],
     from_rinshan: bool,
     yama_idx: usize,
     rinshan_idx: usize,
@@ -179,7 +180,7 @@ impl GameplayLoader {
                 true
             })
             .map(|(i, _)| i as u8)
-            .collect::<ArrayVec<[_; 4]>>()
+            .collect::<ArrayVec<[_; NUM_PLAYERS]>>()
             .into_par_iter()
             .map(|&player_id| {
                 Gameplay::load_events_by_player(self, events, player_id, invisibles.as_deref())
@@ -257,7 +258,9 @@ impl Gameplay {
             state: PlayerState::new(player_id),
             kyoku_idx: 0,
             // end_state: EndState::Passive,
-            opponent_states: array::from_fn(|i| PlayerState::new((player_id + i as u8 + 1) % 4)),
+            opponent_states: array::from_fn(|i| {
+                PlayerState::new((player_id + i as u8 + 1) % NUM_PLAYERS_U8)
+            }),
             from_rinshan: false,
             yama_idx: 0,
             rinshan_idx: 0,
@@ -443,5 +446,62 @@ impl Gameplay {
             );
             self.invisible_obs.push(invisible_obs);
         }
+    }
+}
+
+#[cfg(all(test, feature = "sanma"))]
+mod sanma_test {
+    use super::*;
+    use crate::consts::{ACTION_SPACE, obs_shape};
+    use std::env;
+
+    /// Loads every converted sanma log in `$MORTAL_SANMA_LOGS` the way training
+    /// does, and checks each sample. Run with
+    /// `MORTAL_SANMA_LOGS=<dir> cargo test --features sanma -- --ignored`.
+    #[test]
+    #[ignore = "needs converted logs in $MORTAL_SANMA_LOGS"]
+    fn real_logs_make_valid_samples() {
+        let dir = env::var("MORTAL_SANMA_LOGS").expect("set MORTAL_SANMA_LOGS");
+        let files: Vec<_> = glob::glob(&format!("{dir}/*.json.gz"))
+            .unwrap()
+            .map(|p| p.unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(!files.is_empty(), "no logs in {dir}");
+
+        let count_labels = |augmented| {
+            let loader = GameplayLoader::new(5, false, None, None, false, true, augmented);
+            let mut labels = [0_usize; ACTION_SPACE];
+            for game in loader
+                .load_gz_log_files(&files)
+                .unwrap()
+                .into_iter()
+                .flatten()
+            {
+                for ((obs, mask), &action) in game.obs.iter().zip(&game.masks).zip(&game.actions) {
+                    assert_eq!(obs.dim(), obs_shape(5));
+                    assert!(mask[action as usize], "label {action} is not in its mask");
+                    labels[action as usize] += 1;
+                }
+            }
+            labels
+        };
+
+        let labels = count_labels(false);
+        println!("samples by label: {labels:?}");
+        assert!(labels[46] > 0, "no kita samples");
+        assert_eq!(
+            labels[38] + labels[39] + labels[40],
+            0,
+            "chi samples in sanma"
+        );
+
+        // Augmentation swaps pinzu and souzu, so their discard labels swap and
+        // everything else stays the same.
+        let swapped = count_labels(true);
+        let mut expected = labels;
+        expected[9..18].copy_from_slice(&labels[18..27]);
+        expected[18..27].copy_from_slice(&labels[9..18]);
+        expected.swap(35, 36);
+        assert_eq!(swapped, expected);
     }
 }
