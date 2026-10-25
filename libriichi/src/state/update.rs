@@ -386,7 +386,9 @@ impl PlayerState {
             return Ok(());
         }
 
-        if actor_rel == 3 && !pai.is_jihai() && self.tehai_len_div3 > 0 {
+        // Sanma has no chi.
+        if !cfg!(feature = "sanma") && actor_rel == 3 && !pai.is_jihai() && self.tehai_len_div3 > 0
+        {
             self.set_can_chi_from_tile(pai);
         }
         self.last_cans.can_pon = self.tehai[pai.deaka().as_usize()] >= 2;

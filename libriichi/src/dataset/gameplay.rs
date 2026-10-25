@@ -180,7 +180,7 @@ impl GameplayLoader {
                 true
             })
             .map(|(i, _)| i as u8)
-            .collect::<ArrayVec<[_; 4]>>()
+            .collect::<ArrayVec<[_; NUM_PLAYERS]>>()
             .into_par_iter()
             .map(|&player_id| {
                 Gameplay::load_events_by_player(self, events, player_id, invisibles.as_deref())
@@ -468,20 +468,25 @@ mod sanma_test {
             .collect();
         assert!(!files.is_empty(), "no logs in {dir}");
 
-        let loader = GameplayLoader::new(5, false, None, None, false, true, false);
-        let mut labels = [0_usize; ACTION_SPACE];
-        for game in loader
-            .load_gz_log_files(files)
-            .unwrap()
-            .into_iter()
-            .flatten()
-        {
-            for ((obs, mask), &action) in game.obs.iter().zip(&game.masks).zip(&game.actions) {
-                assert_eq!(obs.dim(), obs_shape(5));
-                assert!(mask[action as usize], "label {action} is not in its mask");
-                labels[action as usize] += 1;
+        let count_labels = |augmented| {
+            let loader = GameplayLoader::new(5, false, None, None, false, true, augmented);
+            let mut labels = [0_usize; ACTION_SPACE];
+            for game in loader
+                .load_gz_log_files(&files)
+                .unwrap()
+                .into_iter()
+                .flatten()
+            {
+                for ((obs, mask), &action) in game.obs.iter().zip(&game.masks).zip(&game.actions) {
+                    assert_eq!(obs.dim(), obs_shape(5));
+                    assert!(mask[action as usize], "label {action} is not in its mask");
+                    labels[action as usize] += 1;
+                }
             }
-        }
+            labels
+        };
+
+        let labels = count_labels(false);
         println!("samples by label: {labels:?}");
         assert!(labels[46] > 0, "no kita samples");
         assert_eq!(
@@ -489,5 +494,14 @@ mod sanma_test {
             0,
             "chi samples in sanma"
         );
+
+        // Augmentation swaps pinzu and souzu, so their discard labels swap and
+        // everything else stays the same.
+        let swapped = count_labels(true);
+        let mut expected = labels;
+        expected[9..18].copy_from_slice(&labels[18..27]);
+        expected[18..27].copy_from_slice(&labels[9..18]);
+        expected.swap(35, 36);
+        assert_eq!(swapped, expected);
     }
 }

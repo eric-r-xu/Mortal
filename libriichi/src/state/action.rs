@@ -141,6 +141,7 @@ impl PlayerState {
                 pai,
                 consumed,
             } => {
+                ensure!(!cfg!(feature = "sanma"), "chi in sanma");
                 ensure!((target + 1) % 4 == actor, "chi from non-kamicha");
                 ensure!(
                     matches!(self.last_kawa_tile, Some(tile) if tile == pai),

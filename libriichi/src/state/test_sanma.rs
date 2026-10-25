@@ -130,6 +130,21 @@ fn kita_ends_the_first_go_around() {
 }
 
 #[test]
+fn no_chi_from_the_left_seat() {
+    // Seat 2 sits to the left of seat 0, and 4p5p could take its 3p.
+    let hand = r#"["1p","2p","4p","5p","7p","8p","9p","1s","2s","3s","E","E","W"]"#;
+    let mut ps = start(0, hand, "C");
+    tsumo(&mut ps, 2, "?");
+    ps.update_json(r#"{"type":"dahai","actor":2,"pai":"3p","tsumogiri":true}"#)
+        .unwrap();
+    assert!(!ps.last_cans.can_chi());
+    ps.validate_reaction_json(
+        r#"{"type":"chi","actor":0,"target":2,"pai":"3p","consumed":["4p","5p"]}"#,
+    )
+    .unwrap_err();
+}
+
+#[test]
 fn kita_is_offered_after_an_own_draw_with_a_north() {
     let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","N","N"]"#;
     let mut ps = start(0, hand, "C");
