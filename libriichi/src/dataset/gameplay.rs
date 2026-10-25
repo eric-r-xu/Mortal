@@ -374,6 +374,7 @@ impl Gameplay {
                 Some(42)
             }
             Event::Ryukyoku { .. } if cans.can_ryukyoku => Some(44),
+            Event::Nukidora { actor, .. } if actor == self.player_id => Some(46),
             _ => {
                 let mut ret = None;
 

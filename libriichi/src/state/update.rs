@@ -56,7 +56,7 @@ impl PlayerState {
         if self.to_mark_same_cycle_furiten.take().is_some() {
             self.at_furiten = true;
         }
-        if self.chankan_chance.take().is_some() {
+        if self.chankan_chance.take().is_some() || self.kita_ron_chance.take().is_some() {
             self.at_ippatsu = false;
         }
 
@@ -167,6 +167,7 @@ impl PlayerState {
         self.ankan_candidates.clear();
         self.kakan_candidates.clear();
         self.chankan_chance = None;
+        self.kita_ron_chance = None;
 
         self.at_ippatsu = false;
         self.at_rinshan = false;
@@ -267,9 +268,18 @@ impl PlayerState {
             }
         }
 
-        // haitei tile cannot be used for kakan or ankan
+        // haitei tile cannot be used for kakan, ankan or kita
         if self.tiles_left == 0 {
             return Ok(());
+        }
+
+        // Sanma: a North can be set aside after any draw of our own, but in
+        // riichi only the North just drawn.
+        if cfg!(feature = "sanma")
+            && self.tehai[tuz!(N)] > 0
+            && (!self.riichi_accepted[0] || pai.as_u8() == tu8!(N))
+        {
+            self.last_cans.can_kita = true;
         }
 
         if self.riichi_accepted[0] {
@@ -684,11 +694,10 @@ impl PlayerState {
         let actor_rel = self.rel(actor);
         self.kitas[actor_rel] += 1;
 
-        // A kita is not a call, but like one it ends every ippatsu and the
-        // uninterrupted first go-around (double riichi, nine terminals,
-        // tenhou and chiihou), the actor's own included.
+        // A kita is not a call, but like one it ends the uninterrupted first
+        // go-around (double riichi, nine terminals, tenhou and chiihou), the
+        // actor's own included, and every ippatsu.
         self.can_w_riichi = false;
-        self.at_ippatsu = false;
 
         if actor_rel != 0 {
             self.witness_tile(pai)?;
@@ -697,10 +706,17 @@ impl PlayerState {
             self.last_kawa_tile = Some(pai); // for getting winning tile in self.agari
 
             // Ron on a kita is allowed, with an ordinary yaku (it is not
-            // chankan).
+            // chankan), and like chankan it keeps ippatsu.
             self.check_ron_on(pai);
+            if self.last_cans.can_ron_agari {
+                self.kita_ron_chance = Some(());
+            } else {
+                self.at_ippatsu = false;
+            }
             return Ok(());
         }
+
+        self.at_ippatsu = false;
 
         // The North stays ours as a dora, so it leaves the hand like a meld
         // tile rather than a discard; the kita itself adds one more dora.

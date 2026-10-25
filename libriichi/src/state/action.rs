@@ -2,7 +2,7 @@ use super::PlayerState;
 use crate::chi_type::ChiType;
 use crate::mjai::Event;
 use crate::tile::Tile;
-use crate::tuz;
+use crate::{tu8, tuz};
 
 use anyhow::{Result, bail, ensure};
 use pyo3::prelude::*;
@@ -35,6 +35,9 @@ pub struct ActionCandidate {
     pub can_ron_agari: bool,
     #[pyo3(get)]
     pub can_ryukyoku: bool,
+    /// Sanma only: set a North aside (nukidora).
+    #[pyo3(get)]
+    pub can_kita: bool,
 
     #[pyo3(get)]
     pub target_actor: u8,
@@ -81,6 +84,7 @@ impl ActionCandidate {
             || self.can_riichi
             || self.can_agari()
             || self.can_ryukyoku
+            || self.can_kita
     }
 
     fn __repr__(&self) -> String {
@@ -192,6 +196,12 @@ impl PlayerState {
                 let tile = consumed[0].deaka();
                 ensure!(self.ankan_candidates.contains(&tile), "cannot ankan {tile}");
                 self.ensure_tiles_in_hand(&consumed)?;
+            }
+
+            Event::Nukidora { pai, .. } => {
+                ensure!(cans.can_kita, "cannot kita");
+                ensure!(pai.as_u8() == tu8!(N), "cannot kita {pai}");
+                self.ensure_tiles_in_hand(&[pai])?;
             }
 
             Event::Hora { target, .. } => {
