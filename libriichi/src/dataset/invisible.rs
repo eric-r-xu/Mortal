@@ -1,6 +1,6 @@
 use crate::arena::Board;
 use crate::array::Simple2DArray;
-use crate::consts::{NUM_PLAYERS_U8, oracle_obs_shape};
+use crate::consts::{NUM_PLAYERS, NUM_PLAYERS_U8, oracle_obs_shape};
 use crate::mjai::Event;
 use crate::state::PlayerState;
 use crate::tile::Tile;
@@ -154,7 +154,7 @@ impl Invisible {
     // should be identical.
     pub fn encode(
         &self,
-        opponent_states: &[PlayerState; 3],
+        opponent_states: &[PlayerState; NUM_PLAYERS - 1],
         yama_idx: usize,
         rinshan_idx: usize,
         version: u32,

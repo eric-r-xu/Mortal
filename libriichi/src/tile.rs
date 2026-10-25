@@ -129,7 +129,11 @@ impl Tile {
         let kind = tile.0 / 9;
         let num = tile.0 % 9;
 
-        if kind < 3 {
+        if cfg!(feature = "sanma") && kind == 0 {
+            // Sanma has only 1m and 9m, which follow each other as doras.
+            // (Sanma has no chi, so no run relies on this.)
+            Self(8 - num)
+        } else if kind < 3 {
             Self(kind * 9 + (num + 1) % 9)
         } else if num < 4 {
             Self(3 * 9 + (num + 1) % 4)
@@ -147,7 +151,9 @@ impl Tile {
         let tile = self.deaka();
         let kind = tile.0 / 9;
         let num = tile.0 % 9;
-        if kind < 3 {
+        if cfg!(feature = "sanma") && kind == 0 {
+            Self(8 - num)
+        } else if kind < 3 {
             Self(kind * 9 + (num + 9 - 1) % 9)
         } else if num < 4 {
             Self(3 * 9 + (num + 4 - 1) % 4)

@@ -31,7 +31,8 @@ pub const TONPUU: u8 = NUM_PLAYERS_U8;
 /// Scheduled hands in a hanchan game: two winds.
 pub const HANCHAN: u8 = 2 * NUM_PLAYERS_U8;
 
-pub const MAX_VERSION: u32 = 4;
+/// Version 5 is the sanma observation, and sanma builds support only it.
+pub const MAX_VERSION: u32 = if cfg!(feature = "sanma") { 5 } else { 4 };
 
 pub const ACTION_SPACE: usize = 37 // discard | kan (choice)
                               + 1  // riichi
@@ -54,6 +55,7 @@ pub const fn obs_shape(version: u32) -> (usize, usize) {
         2 => (942, 34),
         3 => (934, 34),
         4 => (1012, 34),
+        5 => (777, 34),
         _ => unreachable!(),
     }
 }
