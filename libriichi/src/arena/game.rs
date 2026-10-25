@@ -1,6 +1,7 @@
 use super::board::{Board, BoardState, Poll};
 use super::result::GameResult;
 use crate::agent::BatchAgent;
+use crate::consts::{END_SCORE, HANCHAN, INIT_SCORE, NUM_PLAYERS, NUM_PLAYERS_U8, TONPUU};
 use crate::mjai::EventExt;
 use std::time::Duration;
 use std::{array, mem};
@@ -12,7 +13,7 @@ use ndarray::prelude::*;
 pub struct BatchGame {
     /// 8 for hanchan and 4 for tonpuu
     pub length: u8,
-    pub init_scores: [i32; 4],
+    pub init_scores: [i32; NUM_PLAYERS],
     pub disable_progress_bar: bool,
 }
 
@@ -28,18 +29,18 @@ pub struct Index {
 struct Game {
     length: u8,
     seed: (u64, u64),
-    indexes: [Index; 4],
+    indexes: [Index; NUM_PLAYERS],
 
-    oracle_obs_versions: [Option<u32>; 4],
-    invisible_state_cache: [Option<Array2<f32>>; 4],
+    oracle_obs_versions: [Option<u32>; NUM_PLAYERS],
+    invisible_state_cache: [Option<Array2<f32>>; NUM_PLAYERS],
 
-    last_reactions: [EventExt; 4], // cached for poll phase
+    last_reactions: [EventExt; NUM_PLAYERS], // cached for poll phase
 
     board: BoardState,
     kyoku: u8,
     honba: u8,
     kyotaku: u8,
-    scores: [i32; 4],
+    scores: [i32; NUM_PLAYERS],
     game_log: Vec<Vec<EventExt>>,
 
     kyoku_started: bool,
@@ -66,10 +67,10 @@ impl Game {
             // or, after all-last
             //   and, oya is not in renchan (if oya is in renchan, it would already have been ended in the renchan owari check)
             //   and, anyone has more than 30k
-            if self.kyoku >= self.length + 4
+            if self.kyoku >= self.length + NUM_PLAYERS_U8
                 || self.kyoku >= self.length
                     && !self.in_renchan
-                    && self.scores.iter().any(|&s| s >= 30000)
+                    && self.scores.iter().any(|&s| s >= END_SCORE)
             {
                 self.ended = true;
                 return Ok(());
@@ -152,8 +153,8 @@ impl Game {
                 // 2. is at all-last
                 // 3. oya has at least 30000
                 // 4. oya is the top
-                let oya = kyoku_result.kyoku as usize % 4;
-                if kyoku_result.kyoku >= self.length - 1 && self.scores[oya] >= 30000 {
+                let oya = kyoku_result.kyoku as usize % NUM_PLAYERS;
+                if kyoku_result.kyoku >= self.length - 1 && self.scores[oya] >= END_SCORE {
                     let top = kyoku_result
                         .scores
                         .iter()
@@ -223,16 +224,18 @@ impl BatchGame {
     /// for tonpuu. Panics on any other length.
     pub fn tenhou(length: u8, disable_progress_bar: bool) -> Self {
         match length {
-            4 => Self::tenhou_tonpuu(disable_progress_bar),
-            8 => Self::tenhou_hanchan(disable_progress_bar),
-            _ => panic!("game length must be 4 (tonpuu) or 8 (hanchan), got {length}"),
+            TONPUU => Self::tenhou_tonpuu(disable_progress_bar),
+            HANCHAN => Self::tenhou_hanchan(disable_progress_bar),
+            _ => {
+                panic!("game length must be {TONPUU} (tonpuu) or {HANCHAN} (hanchan), got {length}")
+            }
         }
     }
 
     pub const fn tenhou_hanchan(disable_progress_bar: bool) -> Self {
         Self {
-            length: 8,
-            init_scores: [25000; 4],
+            length: HANCHAN,
+            init_scores: [INIT_SCORE; NUM_PLAYERS],
             disable_progress_bar,
         }
     }
@@ -250,8 +253,8 @@ impl BatchGame {
     /// Tenhou, which is what the training data follows.
     pub const fn tenhou_tonpuu(disable_progress_bar: bool) -> Self {
         Self {
-            length: 4,
-            init_scores: [25000; 4],
+            length: TONPUU,
+            init_scores: [INIT_SCORE; NUM_PLAYERS],
             disable_progress_bar,
         }
     }
@@ -259,9 +262,15 @@ impl BatchGame {
     pub fn run(
         &self,
         agents: &mut [Box<dyn BatchAgent>],
-        indexes: &[[Index; 4]],
+        indexes: &[[Index; NUM_PLAYERS]],
         seeds: &[(u64, u64)],
     ) -> Result<Vec<GameResult>> {
+        // The wall, kita, no-chi rules and tsumo-loss scoring are not built yet, so a
+        // sanma game would play by 4-player rules on 3 seats.
+        ensure!(
+            !cfg!(feature = "sanma"),
+            "the sanma arena is not implemented yet"
+        );
         ensure!(!agents.is_empty());
         ensure!(!indexes.is_empty());
         ensure!(
@@ -276,7 +285,7 @@ impl BatchGame {
             .zip(seeds)
             .enumerate()
             .map(|(game_idx, (idxs, &seed))| {
-                let mut oracle_obs_versions = [None; 4];
+                let mut oracle_obs_versions = [None; NUM_PLAYERS];
                 for (i, idx) in idxs.iter().enumerate() {
                     agents[idx.agent_idx].start_game(idx.player_id_idx)?;
                     oracle_obs_versions[i] = agents[idx.agent_idx].oracle_obs_version();
@@ -353,6 +362,7 @@ mod test {
     use crate::tu8;
 
     #[test]
+    #[cfg(not(feature = "sanma"))] // hand-built 4-player seating
     fn tsumogiri() {
         let g = BatchGame::tenhou_hanchan(true);
         let mut agents = [
@@ -405,13 +415,16 @@ mod test {
     /// Runs `seed_count` games of tsumogiri self-play and checks that every
     /// game stops where Tenhou's rules for `g` say it may.
     fn check_game_ends(g: &BatchGame, seed_count: u64) {
-        let player_ids: Vec<_> = (0..4).cycle().take(seed_count as usize * 4).collect();
+        let player_ids: Vec<_> = (0..NUM_PLAYERS_U8)
+            .cycle()
+            .take(seed_count as usize * NUM_PLAYERS)
+            .collect();
         let mut agents = [Box::new(Tsumogiri::new_batched(&player_ids).unwrap()) as _];
         let indexes: Vec<_> = (0..seed_count as usize)
             .map(|game| {
                 array::from_fn(|i| Index {
                     agent_idx: 0,
-                    player_id_idx: game * 4 + i,
+                    player_id_idx: game * NUM_PLAYERS + i,
                 })
             })
             .collect();
@@ -419,27 +432,28 @@ mod test {
         let results = g.run(&mut agents, &indexes, &seeds).unwrap();
 
         for result in results {
-            // Counts from 0: E1 = 0, S1 = 4, W1 = 8.
+            // Counts from 0: E1 = 0, S1 = NUM_PLAYERS, W1 = 2 * NUM_PLAYERS.
             let grand_kyokus: Vec<_> = result
                 .game_log
                 .iter()
                 .map(|kyoku_log| match kyoku_log[0].event {
                     Event::StartKyoku { bakaze, kyoku, .. } => {
-                        (bakaze.as_u8() - tu8!(E)) * 4 + kyoku - 1
+                        (bakaze.as_u8() - tu8!(E)) * NUM_PLAYERS_U8 + kyoku - 1
                     }
                     _ => panic!("kyoku log does not begin with start_kyoku"),
                 })
                 .collect();
             let last = *grand_kyokus.last().unwrap();
             assert!(
-                last < g.length + 4,
+                last < g.length + NUM_PLAYERS_U8,
                 "seed {:?}: played past the extension cap",
                 result.seed,
             );
 
             let has_tobi = result.scores.iter().any(|&s| s < 0);
-            let at_cap = last == g.length + 3;
-            let reached_target = last >= g.length - 1 && result.scores.iter().any(|&s| s >= 30000);
+            let at_cap = last == g.length + NUM_PLAYERS_U8 - 1;
+            let reached_target =
+                last >= g.length - 1 && result.scores.iter().any(|&s| s >= END_SCORE);
             assert!(
                 has_tobi || at_cap || reached_target,
                 "seed {:?}: ended at grand kyoku {last} with scores {:?}",
@@ -450,11 +464,13 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "the sanma arena is not implemented yet")]
     fn tonpuu_ends_by_s4() {
         check_game_ends(&BatchGame::tenhou_tonpuu(true), 16);
     }
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "the sanma arena is not implemented yet")]
     fn hanchan_ends_by_w4() {
         check_game_ends(&BatchGame::tenhou_hanchan(true), 4);
     }

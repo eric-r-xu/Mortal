@@ -1,15 +1,16 @@
+use crate::consts::NUM_PLAYERS;
 #[derive(Debug, Clone, Copy)]
 pub struct Rankings {
-    pub player_by_rank: [u8; 4],
-    pub rank_by_player: [u8; 4],
+    pub player_by_rank: [u8; NUM_PLAYERS],
+    pub rank_by_player: [u8; NUM_PLAYERS],
 }
 
 impl Rankings {
-    pub fn new(scores: [i32; 4]) -> Self {
-        let mut player_by_rank = [0, 1, 2, 3];
+    pub fn new(scores: [i32; NUM_PLAYERS]) -> Self {
+        let mut player_by_rank = std::array::from_fn(|i| i as u8);
         player_by_rank.sort_by_key(|&i| -scores[i as usize]);
 
-        let mut rank_by_player = [0; 4];
+        let mut rank_by_player = [0; NUM_PLAYERS];
         for (rank, id) in player_by_rank.into_iter().enumerate() {
             rank_by_player[id as usize] = rank as u8;
         }
@@ -21,7 +22,7 @@ impl Rankings {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "sanma")))]
 mod test {
     use super::*;
 

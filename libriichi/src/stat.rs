@@ -1,4 +1,5 @@
 use crate::algo::point::Point;
+use crate::consts::{INIT_SCORE, NUM_PLAYERS};
 use crate::mjai::Event;
 use crate::py_helper::add_submodule;
 use crate::rankings::Rankings;
@@ -266,7 +267,7 @@ impl Stat {
             ..Default::default()
         };
 
-        let mut cur_scores = [0; 4];
+        let mut cur_scores = [0; NUM_PLAYERS];
         let mut riichi_declared = false;
         let mut riichi_accepted = false;
         let mut others_riichi_declared = false;
@@ -416,15 +417,15 @@ impl Stat {
 
         let rk = Rankings::new(cur_scores);
 
-        // assume the sum of scores to be 100k
+        // assume the sum of scores to be the starting points of all seats
+        let total = NUM_PLAYERS as i32 * INIT_SCORE;
         let sum: i32 = cur_scores.iter().sum();
-        if sum < 100_000 {
-            cur_scores[rk.player_by_rank[0] as usize] += 100_000 - sum;
+        if sum < total {
+            cur_scores[rk.player_by_rank[0] as usize] += total - sum;
         }
 
-        // assume the starting point to be 25000
         let final_score = cur_scores[player_id as usize];
-        stat.point = final_score as i64 - 25000;
+        stat.point = final_score as i64 - INIT_SCORE as i64;
         if final_score < 0 {
             stat.tobi = 1;
         }

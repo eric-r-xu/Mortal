@@ -1,6 +1,7 @@
 use super::result::KyokuResult;
 use crate::array::Simple2DArray;
 use crate::consts::oracle_obs_shape;
+use crate::consts::{NOTEN_POT, NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::{Event, EventExt};
 use crate::state::PlayerState;
 use crate::tile::Tile;
@@ -33,10 +34,10 @@ pub struct Board {
     pub honba: u8,
     /// Does not effect the kyoku seed
     pub kyotaku: u8,
-    /// [25000; 4]
-    pub scores: [i32; 4],
+    /// [25000; NUM_PLAYERS]
+    pub scores: [i32; NUM_PLAYERS],
 
-    pub haipai: [[Tile; 13]; 4],
+    pub haipai: [[Tile; 13]; NUM_PLAYERS],
     /// Goes backward (pop)
     pub yama: Vec<Tile>,
     /// Goes backward (pop)
@@ -53,12 +54,12 @@ pub struct BoardState {
     board: Board,
     // Absolute seat, with the oya of E1 always being 0
     oya: u8,
-    player_states: [PlayerState; 4],
+    player_states: [PlayerState; NUM_PLAYERS],
 
     can_renchan: bool,
     has_hora: bool,
     has_abortive_ryukyoku: bool,
-    kyoku_deltas: [i32; 4],
+    kyoku_deltas: [i32; NUM_PLAYERS],
 
     #[derivative(Default(value = "70"))]
     tiles_left: u8,
@@ -68,15 +69,15 @@ pub struct BoardState {
     need_new_dora_at_discard: Option<()>,
     need_new_dora_at_tsumo: Option<()>,
     riichi_to_be_accepted: Option<u8>,
-    #[derivative(Default(value = "[true; 4]"))]
-    can_nagashi_mangan: [bool; 4],
+    #[derivative(Default(value = "[true; NUM_PLAYERS]"))]
+    can_nagashi_mangan: [bool; NUM_PLAYERS],
     #[derivative(Default(value = "true"))]
     can_four_wind: bool,
     four_wind_tile: Option<Tile>,
     accepted_riichis: u8,
     kans: u8,
     check_four_kan: bool,
-    paos: [Option<u8>; 4],
+    paos: [Option<u8>; NUM_PLAYERS],
 
     log: Vec<EventExt>,
 
@@ -85,7 +86,7 @@ pub struct BoardState {
 }
 
 pub struct AgentContext<'a> {
-    pub player_states: &'a [PlayerState; 4],
+    pub player_states: &'a [PlayerState; NUM_PLAYERS],
     pub log: &'a [EventExt],
 }
 
@@ -125,7 +126,7 @@ impl Board {
     /// `game_length` is 8 for hanchan and 4 for tonpuu; the players' states
     /// need it to tell which round is all-last.
     pub fn into_state(self, game_length: u8) -> BoardState {
-        let oya = self.kyoku % 4;
+        let oya = self.kyoku % NUM_PLAYERS_U8;
         let dora_indicators_full = self.dora_indicators.clone();
 
         BoardState {
@@ -140,7 +141,7 @@ impl Board {
 
 impl BoardState {
     /// Returns iff any player on the board can act or the kyoku has ended.
-    pub fn poll(&mut self, mut reactions: [EventExt; 4]) -> Result<Poll> {
+    pub fn poll(&mut self, mut reactions: [EventExt; NUM_PLAYERS]) -> Result<Poll> {
         loop {
             let poll = self.step(&reactions)?;
             match poll {
@@ -241,7 +242,7 @@ impl BoardState {
     }
 
     fn exhaustive_ryukyoku(&mut self) {
-        let mut deltas = [0; 4];
+        let mut deltas = [0; NUM_PLAYERS];
         self.can_renchan = self.player_states[self.oya as usize].shanten() == 0;
 
         let mut has_nagashi_mangan = false;
@@ -253,19 +254,19 @@ impl BoardState {
             .for_each(|i| {
                 has_nagashi_mangan = true;
                 if i as u8 == self.oya {
-                    let mut dod = [-4000; 4];
-                    dod[i] = 12000;
+                    let mut dod = [-4000; NUM_PLAYERS];
+                    dod[i] = 4000 * (NUM_PLAYERS as i32 - 1);
                     vec_add_assign(&mut deltas, &dod);
                 } else {
-                    let mut dod = [-2000; 4];
-                    dod[i] = 8000;
+                    let mut dod = [-2000; NUM_PLAYERS];
+                    dod[i] = 2000 * (NUM_PLAYERS as i32 - 2) + 4000;
                     dod[self.oya as usize] = -4000;
                     vec_add_assign(&mut deltas, &dod);
                 };
             });
 
         if !has_nagashi_mangan {
-            let tenpai_actors: ArrayVec<[_; 4]> = self
+            let tenpai_actors: ArrayVec<[_; NUM_PLAYERS]> = self
                 .player_states
                 .iter()
                 .enumerate()
@@ -273,15 +274,19 @@ impl BoardState {
                 .map(|(i, _)| i)
                 .collect();
 
-            let (plus, minus) = match tenpai_actors.len() {
-                1 => (3000, -1000),
-                2 => (1500, -1500),
-                3 => (1000, -3000),
-                // 0 | 4
-                _ => (0, 0),
+            // The pot is split among the tenpai players and paid by the rest;
+            // nothing changes hands if everyone or no one is tenpai.
+            let tenpai = tenpai_actors.len() as i32;
+            let (plus, minus) = if 0 < tenpai && tenpai < NUM_PLAYERS as i32 {
+                (
+                    NOTEN_POT / tenpai,
+                    -NOTEN_POT / (NUM_PLAYERS as i32 - tenpai),
+                )
+            } else {
+                (0, 0)
             };
             if plus > 0 {
-                let mut dod = [minus; 4];
+                let mut dod = [minus; NUM_PLAYERS];
                 tenpai_actors.into_iter().for_each(|i| dod[i] = plus);
                 vec_add_assign(&mut deltas, &dod);
             }
@@ -369,7 +374,7 @@ impl BoardState {
         &mut self,
         single_actor: u8,
         single_target: u8,
-        reactions: &[EventExt; 4],
+        reactions: &[EventExt; NUM_PLAYERS],
     ) -> Result<()> {
         self.has_hora = true;
 
@@ -402,10 +407,10 @@ impl BoardState {
                 .enumerate()
                 .cycle()
                 .skip(single_target as usize + 1)
-                .take(3)
+                .take(NUM_PLAYERS - 1)
                 .filter_map(|(actor, v)| v.map(|point| (actor, point)))
                 .for_each(|(actor, point)| {
-                    let mut deltas = [0; 4];
+                    let mut deltas = [0; NUM_PLAYERS];
                     if let Some(pao_target) = self.paos[actor] {
                         // As per [Tenhou's rule](https://tenhou.net/man/#RULE):
                         //
@@ -441,7 +446,7 @@ impl BoardState {
         }
 
         let point = points[single_actor as usize].unwrap();
-        let mut deltas = [0; 4];
+        let mut deltas = [0; NUM_PLAYERS];
         if let Some(pao_target) = self.paos[single_actor as usize] {
             // For pao to happen, the agari must have at least 1 yakuman so ron
             // point and sum of tsumo point should be equal.
@@ -505,14 +510,14 @@ impl BoardState {
     #[inline]
     fn abortive_ryukyoku(&mut self) {
         let ryukyoku = Event::Ryukyoku {
-            deltas: Some([0; 4]),
+            deltas: Some([0; NUM_PLAYERS]),
         };
         self.add_log_no_meta(ryukyoku);
         self.has_abortive_ryukyoku = true;
         // No need to broadcast
     }
 
-    fn step(&mut self, reactions: &[EventExt; 4]) -> Result<Poll> {
+    fn step(&mut self, reactions: &[EventExt; NUM_PLAYERS]) -> Result<Poll> {
         if self.tiles_left == 70 {
             self.haipai()?;
             return Ok(Poll::InGame);
@@ -595,7 +600,7 @@ impl BoardState {
 
                 self.broadcast(&ev.event);
                 self.add_log(ev.clone());
-                self.tsumo_actor = (actor + 1) % 4;
+                self.tsumo_actor = (actor + 1) % NUM_PLAYERS_U8;
 
                 // 四風連打
                 if self.can_four_wind && self.check_four_wind(pai)? {
@@ -826,3 +831,47 @@ const UNSHUFFLED: [Tile; 136] = [
     t!(F), t!(F), t!(F), t!(F),
     t!(C), t!(C), t!(C), t!(C),
 ];
+
+/// The sanma wall: `UNSHUFFLED` without 2m-8m.
+// One red 5p and one red 5s, as in Tenhou phoenix-room sanma logs (the aka-dora counts of 2,496 winning
+// hands match exactly).
+#[allow(dead_code)] // used by the 3-player board once it exists
+const SANMA_UNSHUFFLED: [Tile; 108] = {
+    let mut wall = [t!(?); 108];
+    let mut i = 0;
+    let mut n = 0;
+    while i < UNSHUFFLED.len() {
+        if !UNSHUFFLED[i].is_sanma_removed() {
+            wall[n] = UNSHUFFLED[i];
+            n += 1;
+        }
+        i += 1;
+    }
+    assert!(n == 108);
+    wall
+};
+
+#[cfg(test)]
+mod sanma_test {
+    use super::*;
+
+    #[test]
+    fn sanma_wall_has_no_manzu_middle() {
+        assert_eq!(
+            SANMA_UNSHUFFLED
+                .iter()
+                .filter(|t| t.deaka() == t!(1m))
+                .count(),
+            4
+        );
+        assert_eq!(
+            SANMA_UNSHUFFLED
+                .iter()
+                .filter(|t| t.deaka() == t!(9m))
+                .count(),
+            4
+        );
+        assert!(SANMA_UNSHUFFLED.iter().all(|t| !t.is_sanma_removed()));
+        assert_eq!(SANMA_UNSHUFFLED.iter().filter(|t| t.is_aka()).count(), 2);
+    }
+}

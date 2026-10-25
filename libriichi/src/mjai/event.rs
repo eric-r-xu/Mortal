@@ -1,3 +1,4 @@
+use crate::consts::NUM_PLAYERS;
 use crate::tile::Tile;
 use std::error::Error;
 use std::fmt;
@@ -23,7 +24,7 @@ pub enum Event {
 
     StartGame {
         #[serde(default)]
-        names: [String; 4],
+        names: [String; NUM_PLAYERS],
 
         /// Consists of (nonce, key).
         seed: Option<(u64, u64)>,
@@ -38,8 +39,8 @@ pub enum Event {
         kyotaku: u8,
         #[serde_as(deserialize_as = "TryFromInto<Actor>")]
         oya: u8,
-        scores: [i32; 4],
-        tehais: [[Tile; 13]; 4],
+        scores: [i32; NUM_PLAYERS],
+        tehais: [[Tile; 13]; NUM_PLAYERS],
     },
 
     Tsumo {
@@ -89,6 +90,13 @@ pub enum Event {
         actor: u8,
         consumed: [Tile; 4],
     },
+    /// Sanma only: the actor sets a North aside as a bonus dora (kita), then
+    /// draws a replacement tile. This is an extension to mjai.
+    Nukidora {
+        #[serde_as(deserialize_as = "TryFromInto<Actor>")]
+        actor: u8,
+        pai: Tile,
+    },
     Dora {
         dora_marker: Tile,
     },
@@ -108,11 +116,11 @@ pub enum Event {
         #[serde_as(deserialize_as = "TryFromInto<Actor>")]
         target: u8,
 
-        deltas: Option<[i32; 4]>,
+        deltas: Option<[i32; NUM_PLAYERS]>,
         ura_markers: Option<Vec<Tile>>,
     },
     Ryukyoku {
-        deltas: Option<[i32; 4]>,
+        deltas: Option<[i32; NUM_PLAYERS]>,
     },
 
     EndKyoku,
@@ -168,6 +176,7 @@ impl Event {
             | Self::Daiminkan { actor, .. }
             | Self::Kakan { actor, .. }
             | Self::Ankan { actor, .. }
+            | Self::Nukidora { actor, .. }
             | Self::Reach { actor, .. }
             | Self::ReachAccepted { actor, .. }
             | Self::Hora { actor, .. } => Some(actor),
@@ -258,6 +267,7 @@ mod test {
     use serde_json::{self as json, Map, Number, Value, json};
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "4-player fixtures")]
     fn json_consistency() {
         let lines = r#"
             {"type":"none"}
@@ -294,6 +304,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(feature = "sanma", ignore = "4-player fixtures")]
     fn bound_check() {
         let value = json! ({
             "type": "reach",

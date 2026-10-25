@@ -3,6 +3,7 @@ use super::action::ActionCandidate;
 use super::item::{ChiPon, KawaItem, Sutehai};
 use crate::algo::agari::{self, AgariCalculator};
 use crate::algo::shanten;
+use crate::consts::{LIVE_WALL, NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::mjai::Event;
 use crate::rankings::Rankings;
 use crate::tile::Tile;
@@ -110,6 +111,7 @@ impl PlayerState {
 
             Event::Kakan { actor, pai, .. } => self.kakan(actor, pai)?,
             Event::Ankan { actor, consumed } => self.ankan(actor, consumed)?,
+            Event::Nukidora { actor, pai } => self.nukidora(actor, pai)?,
             Event::Dora { dora_marker } => self.add_dora_indicator(dora_marker)?,
 
             Event::Reach { actor } => self.reach(actor),
@@ -130,8 +132,8 @@ impl PlayerState {
         honba: u8,
         kyotaku: u8,
         oya: u8,
-        scores: [i32; 4],
-        tehais: [[Tile; 13]; 4],
+        scores: [i32; NUM_PLAYERS],
+        tehais: [[Tile; 13]; NUM_PLAYERS],
     ) -> Result<()> {
         self.tehai.fill(0);
         self.waits.fill(false);
@@ -147,9 +149,10 @@ impl PlayerState {
         self.honba = honba;
         self.kyotaku = kyotaku;
         self.oya = self.rel(oya) as u8;
-        self.jikaze = must_tile!(tu8!(E) + (4 - self.oya) % 4);
+        self.jikaze = must_tile!(tu8!(E) + (NUM_PLAYERS_U8 - self.oya) % NUM_PLAYERS_U8);
         self.kyoku = kyoku - 1;
-        self.is_all_last = self.bakaze == self.last_scheduled_wind() && self.kyoku == 3
+        self.is_all_last = self.bakaze == self.last_scheduled_wind()
+            && self.kyoku == NUM_PLAYERS_U8 - 1
             || self.bakaze.as_u8() >= self.extension_wind().as_u8();
 
         self.scores = scores;
@@ -158,6 +161,7 @@ impl PlayerState {
         self.dora_indicators.clear();
         self.doras_owned.fill(0);
         self.doras_seen = 0;
+        self.kitas.fill(0);
         self.akas_in_hand.fill(false);
 
         self.ankan_candidates.clear();
@@ -180,7 +184,7 @@ impl PlayerState {
         self.kans_on_board = 0;
         self.tehai_len_div3 = 4;
         self.has_next_shanten_discard = false;
-        self.tiles_left = 70;
+        self.tiles_left = LIVE_WALL;
         self.at_turn = 0;
 
         self.kawa.iter_mut().for_each(|k| k.clear());
@@ -298,7 +302,8 @@ impl PlayerState {
         }
 
         self.last_cans.can_riichi = self.is_menzen
-            && self.tiles_left >= 4
+            // One more draw of our own must be left: 4 tiles, or 3 in sanma.
+            && self.tiles_left >= NUM_PLAYERS_U8
             && self.scores[0] >= 1000
             && (self.shanten == 0 || self.shanten == 1 && self.has_next_shanten_discard);
 
@@ -365,6 +370,25 @@ impl PlayerState {
             return Ok(());
         }
 
+        self.check_ron_on(pai);
+
+        if self.riichi_accepted[0] || self.tiles_left == 0 {
+            return Ok(());
+        }
+
+        if actor_rel == 3 && !pai.is_jihai() && self.tehai_len_div3 > 0 {
+            self.set_can_chi_from_tile(pai);
+        }
+        self.last_cans.can_pon = self.tehai[pai.deaka().as_usize()] >= 2;
+        self.last_cans.can_daiminkan =
+            self.kans_on_board < 4 && self.tehai[pai.deaka().as_usize()] == 3;
+
+        Ok(())
+    }
+
+    /// Sets `can_ron_agari` and the furiten that follows from it, for a tile
+    /// another player has just put out (a discard, or a kita in sanma).
+    fn check_ron_on(&mut self, pai: Tile) {
         if !self.at_furiten && self.waits[pai.deaka().as_usize()] {
             if self.riichi_accepted[0] || self.tiles_left == 0 {
                 // 立直 or 河底撈魚
@@ -408,19 +432,6 @@ impl PlayerState {
                 self.at_furiten = true;
             }
         }
-
-        if self.riichi_accepted[0] || self.tiles_left == 0 {
-            return Ok(());
-        }
-
-        if actor_rel == 3 && !pai.is_jihai() && self.tehai_len_div3 > 0 {
-            self.set_can_chi_from_tile(pai);
-        }
-        self.last_cans.can_pon = self.tehai[pai.deaka().as_usize()] >= 2;
-        self.last_cans.can_daiminkan =
-            self.kans_on_board < 4 && self.tehai[pai.deaka().as_usize()] == 3;
-
-        Ok(())
     }
 
     fn chi(&mut self, actor: u8, pai: Tile, consumed: [Tile; 2]) -> Result<()> {
@@ -659,6 +670,58 @@ impl PlayerState {
         Ok(())
     }
 
+    /// Sanma's kita. The rules below were checked against Tenhou phoenix-room
+    /// logs.
+    fn nukidora(&mut self, actor: u8, pai: Tile) -> Result<()> {
+        ensure!(
+            cfg!(feature = "sanma"),
+            "rule violation: nukidora outside sanma",
+        );
+        ensure!(
+            pai.as_u8() == tu8!(N),
+            "rule violation: nukidora of {pai}, which is not a North",
+        );
+        let actor_rel = self.rel(actor);
+        self.kitas[actor_rel] += 1;
+
+        // A kita is not a call, but like one it ends every ippatsu and the
+        // uninterrupted first go-around (double riichi, nine terminals,
+        // tenhou and chiihou), the actor's own included.
+        self.can_w_riichi = false;
+        self.at_ippatsu = false;
+
+        if actor_rel != 0 {
+            self.witness_tile(pai)?;
+            self.update_doras_owned(actor_rel, pai);
+            self.doras_owned[actor_rel] += 1;
+            self.last_kawa_tile = Some(pai); // for getting winning tile in self.agari
+
+            // Ron on a kita is allowed, with an ordinary yaku (it is not
+            // chankan).
+            self.check_ron_on(pai);
+            return Ok(());
+        }
+
+        // The North stays ours as a dora, so it leaves the hand like a meld
+        // tile rather than a discard; the kita itself adds one more dora.
+        self.move_tile(pai, MoveType::FuuroConsume)?;
+        self.doras_owned[0] += 1;
+        // A win on the replacement tile is rinshan kaihou.
+        self.at_rinshan = true;
+
+        // Kita is allowed in riichi, where the shanten and waits are frozen.
+        if !self.riichi_accepted[0] {
+            if self.next_shanten_discards[pai.deaka().as_usize()] {
+                self.shanten -= 1;
+            } else if !self.keep_shanten_discards[pai.deaka().as_usize()] {
+                self.update_shanten();
+            }
+            self.update_waits_and_furiten();
+        }
+
+        Ok(())
+    }
+
     const fn reach(&mut self, actor: u8) {
         let actor_rel = self.rel(actor);
         self.riichi_declared[actor_rel] = true;
@@ -683,7 +746,7 @@ impl PlayerState {
     }
 
     pub(super) const fn rel(&self, actor: u8) -> usize {
-        ((actor + 4 - self.player_id) % 4) as usize
+        ((actor + NUM_PLAYERS_U8 - self.player_id) % NUM_PLAYERS_U8) as usize
     }
 
     /// Updates `tiles_seen`, `doras_seen` and `akas_seen`.
@@ -788,7 +851,7 @@ impl PlayerState {
         self.doras_owned[0] += self.tehai[next.as_usize()];
 
         // Count new dora in everyone's fuuro
-        for i in 0..4 {
+        for i in 0..NUM_PLAYERS {
             self.doras_owned[i] += self.fuuro_overview[i]
                 .iter()
                 .flatten()
@@ -796,6 +859,9 @@ impl PlayerState {
                 .count() as u8;
             if self.ankan_overview[i].contains(&next) {
                 self.doras_owned[i] += 4;
+            }
+            if next.as_u8() == tu8!(N) {
+                self.doras_owned[i] += self.kitas[i];
             }
         }
 
@@ -805,11 +871,11 @@ impl PlayerState {
     }
 
     pub(super) fn pad_kawa_for_pon_or_daiminkan(&mut self, abs_actor: u8, abs_target: u8) {
-        let mut i = (abs_target + 1) % 4;
+        let mut i = (abs_target + 1) % NUM_PLAYERS_U8;
         while i != abs_actor {
             let rel = self.rel(i);
             self.kawa[rel].push(None);
-            i = (i + 1) % 4;
+            i = (i + 1) % NUM_PLAYERS_U8;
         }
     }
 
@@ -960,7 +1026,7 @@ impl PlayerState {
         self.rank = self.get_rank(self.scores);
     }
 
-    pub(super) fn get_rank(&self, mut scores_rel: [i32; 4]) -> u8 {
+    pub(super) fn get_rank(&self, mut scores_rel: [i32; NUM_PLAYERS]) -> u8 {
         let scores_abs = {
             scores_rel.rotate_right(self.player_id as usize);
             scores_rel

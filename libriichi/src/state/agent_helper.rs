@@ -3,6 +3,7 @@ use crate::algo::agari::AgariCalculator;
 use crate::algo::point::Point;
 use crate::algo::shanten;
 use crate::algo::sp::{InitState, SPCalculator};
+use crate::consts::{END_SCORE, NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::tile::Tile;
 use crate::vec_ops::vec_add_assign;
 use crate::{must_tile, tu8, tuz};
@@ -231,13 +232,13 @@ impl PlayerState {
             // Ryukyoku if it is all-last and we are oya or we are not the last,
             // because it is hard to decide whether it is appropriate to not
             // ryukyoku.
-            if self.oya == 0 || self.rank < 3 {
+            if self.oya == 0 || self.rank < NUM_PLAYERS_U8 - 1 {
                 return true;
             }
 
             // At all-last, we are the last and we are not oya. If even a
             // haneman tsumo cannot let us avoid the last, then do not ryukyoku.
-            let mut scores = [-3000 - self.honba as i32 * 300; 4];
+            let mut scores = [-3000 - self.honba as i32 * 300; NUM_PLAYERS];
             scores[0] = 12000 + self.kyotaku as i32 * 1000 + self.honba as i32 * 300;
             scores[self.oya as usize] = -6000 - self.honba as i32 * 300;
             vec_add_assign(&mut scores, &self.scores);
@@ -273,17 +274,17 @@ impl PlayerState {
     fn rule_based_agari_slow(&self, is_ron: bool, target_rel: usize) -> bool {
         // Agari if it is not yet all-last, or we are oya ourselves, or we are
         // not the last place at all.
-        if !self.is_all_last || self.oya == 0 || self.rank < 3 {
+        if !self.is_all_last || self.oya == 0 || self.rank < NUM_PLAYERS_U8 - 1 {
             return true;
         }
 
         if self.bakaze == self.extension_wind() {
             // Agari if we are in the extension round but it is not yet the
             // real all-last (W4 for hanchan, S4 for tonpuu).
-            if self.kyoku < 3 {
+            if self.kyoku < NUM_PLAYERS_U8 - 1 {
                 return true;
             }
-        } else if self.scores.iter().all(|&s| s < 30000) {
+        } else if self.scores.iter().all(|&s| s < END_SCORE) {
             // Agari if the extension (西入 or 南入) is possible. Note that this
             // condition is sound but not complete.
             return true;
@@ -359,13 +360,13 @@ impl PlayerState {
         //
         // Agari if entering or staying in the extension (西入 or 南入) is
         // possible. This condition is sound and complete.
-        if exp_scores.iter().all(|&s| s < 30000) {
+        if exp_scores.iter().all(|&s| s < END_SCORE) {
             return true;
         }
 
         // Agari if the best post-hora situation in theory will make us avoid
         // taking the last place.
-        self.get_rank(exp_scores) < 3
+        self.get_rank(exp_scores) < NUM_PLAYERS_U8 - 1
     }
 
     /// Err is returned if the hand cannot agari, or cannot retrieve the winning

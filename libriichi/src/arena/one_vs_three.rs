@@ -1,6 +1,7 @@
 use super::game::{BatchGame, Index};
 use super::result::GameResult;
 use crate::agent::{AkochanAgent, BatchAgent, new_py_agent};
+use crate::consts::{HANCHAN, NUM_PLAYERS, TONPUU};
 use std::fs::{self, File};
 use std::io;
 use std::iter;
@@ -19,7 +20,7 @@ use rayon::prelude::*;
 pub struct OneVsThree {
     pub disable_progress_bar: bool,
     pub log_dir: Option<String>,
-    /// 8 for hanchan and 4 for tonpuu.
+    /// `HANCHAN` (8, or 6 in sanma) or `TONPUU` (4, or 3 in sanma).
     pub game_length: u8,
 }
 
@@ -28,7 +29,7 @@ impl Default for OneVsThree {
         Self {
             disable_progress_bar: false,
             log_dir: None,
-            game_length: 8,
+            game_length: HANCHAN,
         }
     }
 }
@@ -36,11 +37,11 @@ impl Default for OneVsThree {
 #[pymethods]
 impl OneVsThree {
     #[new]
-    #[pyo3(signature = (*, disable_progress_bar=false, log_dir=None, game_length=8))]
+    #[pyo3(signature = (*, disable_progress_bar=false, log_dir=None, game_length=HANCHAN))]
     fn new(disable_progress_bar: bool, log_dir: Option<String>, game_length: u8) -> Result<Self> {
         ensure!(
-            matches!(game_length, 4 | 8),
-            "game_length must be 4 (tonpuu) or 8 (hanchan), got {game_length}",
+            matches!(game_length, TONPUU | HANCHAN),
+            "game_length must be {TONPUU} (tonpuu) or {HANCHAN} (hanchan), got {game_length}",
         );
         Ok(Self {
             disable_progress_bar,
@@ -57,7 +58,7 @@ impl OneVsThree {
         seed_start: (u64, u64),
         seed_count: u64,
         py: Python<'_>,
-    ) -> Result<[i32; 4]> {
+    ) -> Result<[i32; NUM_PLAYERS]> {
         // `allow_threads` is required, otherwise it will block python GC to
         // run, leading to memory leaks, since this function is doing long
         // tasks.
@@ -69,9 +70,9 @@ impl OneVsThree {
                 seed_count,
             )?;
 
-            let mut rankings = [0; 4];
+            let mut rankings = [0; NUM_PLAYERS];
             for (i, result) in results.iter().enumerate() {
-                let rank = result.rankings().rank_by_player[i % 4];
+                let rank = result.rankings().rank_by_player[i % NUM_PLAYERS];
                 rankings[rank as usize] += 1;
             }
             Ok(rankings)
@@ -85,7 +86,7 @@ impl OneVsThree {
         seed_start: (u64, u64),
         seed_count: u64,
         py: Python<'_>,
-    ) -> Result<[i32; 4]> {
+    ) -> Result<[i32; NUM_PLAYERS]> {
         py.allow_threads(move || {
             let results = self.run_batch(
                 |player_ids| AkochanAgent::new_batched(player_ids).map(|a| Box::new(a) as _),
@@ -94,9 +95,9 @@ impl OneVsThree {
                 seed_count,
             )?;
 
-            let mut rankings = [0; 4];
+            let mut rankings = [0; NUM_PLAYERS];
             for (i, result) in results.iter().enumerate() {
-                let rank = result.rankings().rank_by_player[i % 4];
+                let rank = result.rankings().rank_by_player[i % NUM_PLAYERS];
                 rankings[rank as usize] += 1;
             }
             Ok(rankings)
@@ -110,7 +111,7 @@ impl OneVsThree {
         seed_start: (u64, u64),
         seed_count: u64,
         py: Python<'_>,
-    ) -> Result<[i32; 4]> {
+    ) -> Result<[i32; NUM_PLAYERS]> {
         py.allow_threads(move || {
             let results = self.run_batch(
                 |player_ids| new_py_agent(engine, player_ids),
@@ -119,9 +120,9 @@ impl OneVsThree {
                 seed_count,
             )?;
 
-            let mut rankings = [0; 4];
+            let mut rankings = [0; NUM_PLAYERS];
             for (i, result) in results.iter().enumerate() {
-                let rank = result.rankings().rank_by_player[i % 4];
+                let rank = result.rankings().rank_by_player[i % NUM_PLAYERS];
                 rankings[rank as usize] += 1;
             }
             Ok(rankings)
@@ -151,24 +152,27 @@ impl OneVsThree {
             seed_start.0 + seed_count,
             seed_start.1,
             seed_count,
-            seed_count * 4,
+            seed_count * NUM_PLAYERS as u64,
             self.game_length,
         );
 
         let seeds: Vec<_> = (seed_start.0..seed_start.0 + seed_count)
-            .flat_map(|seed| iter::repeat_n((seed, seed_start.1), 4))
+            .flat_map(|seed| iter::repeat_n((seed, seed_start.1), NUM_PLAYERS))
             .collect();
 
-        let challenger_player_ids: Vec<_> = (0..4).cycle().take(seed_count as usize * 4).collect();
+        let challenger_player_ids: Vec<_> = (0..NUM_PLAYERS as u8)
+            .cycle()
+            .take(seed_count as usize * NUM_PLAYERS)
+            .collect();
 
-        let champion_player_ids_per_seed = [
-            1, 2, 3, // split A
-            0, 2, 3, // split B
-            0, 1, 3, // split C
-            0, 1, 2, // split D
-        ];
+        // In split k the challenger sits at seat k and the champion fills the
+        // other seats.
+        let champion_player_ids_per_seed: Vec<u8> = (0..NUM_PLAYERS as u8)
+            .flat_map(|split| (0..NUM_PLAYERS as u8).filter(move |&id| id != split))
+            .collect();
         let champion_player_ids: Vec<_> = champion_player_ids_per_seed
-            .into_iter()
+            .iter()
+            .copied()
             .cycle()
             .take(seed_count as usize * champion_player_ids_per_seed.len())
             .collect();
@@ -181,14 +185,12 @@ impl OneVsThree {
 
         let mut challenger_idx = 0;
         let mut champion_idx = 0;
-        let agent_idxs_per_seed = [
-            [0, 1, 1, 1], // split A
-            [1, 0, 1, 1], // split B
-            [1, 1, 0, 1], // split C
-            [1, 1, 1, 0], // split D
-        ];
+        let agent_idxs_per_seed: Vec<[usize; NUM_PLAYERS]> = (0..NUM_PLAYERS)
+            .map(|split| std::array::from_fn(|seat| usize::from(seat != split)))
+            .collect();
         let indexes: Vec<_> = agent_idxs_per_seed
-            .into_iter()
+            .iter()
+            .copied()
             .cycle()
             .take(seed_count as usize * agent_idxs_per_seed.len())
             .map(|agent_idxs_per_split| {
@@ -216,7 +218,7 @@ impl OneVsThree {
             let bar = if self.disable_progress_bar {
                 ProgressBar::hidden()
             } else {
-                ProgressBar::new(seed_count * 4)
+                ProgressBar::new(seed_count * NUM_PLAYERS as u64)
             };
             const TEMPLATE: &str = "[{elapsed_precise}] [{wide_bar}] {pos}/{len} {percent:>3}%";
             bar.set_style(ProgressStyle::with_template(TEMPLATE)?.progress_chars("#-"));
@@ -227,7 +229,7 @@ impl OneVsThree {
                 .progress_with(bar)
                 .enumerate()
                 .try_for_each(|(i, game_result)| {
-                    let split_name = ["a", "b", "c", "d"][i % 4];
+                    let split_name = ["a", "b", "c", "d"][i % NUM_PLAYERS];
                     let (seed, key) = game_result.seed;
                     let filename: PathBuf = [dir, &format!("{seed}_{key}_{split_name}.json.gz")]
                         .iter()

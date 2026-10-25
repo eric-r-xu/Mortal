@@ -1,6 +1,6 @@
 use crate::arena::Board;
 use crate::array::Simple2DArray;
-use crate::consts::oracle_obs_shape;
+use crate::consts::{NUM_PLAYERS_U8, oracle_obs_shape};
 use crate::mjai::Event;
 use crate::state::PlayerState;
 use crate::tile::Tile;
@@ -50,7 +50,7 @@ impl Invisible {
                 } => {
                     if let Some(seed) = seed {
                         let mut board = Board {
-                            kyoku: 4 * (bakaze.as_u8() - tu8!(E)) + kyoku - 1,
+                            kyoku: NUM_PLAYERS_U8 * (bakaze.as_u8() - tu8!(E)) + kyoku - 1,
                             honba: *honba,
                             ..Default::default()
                         };
@@ -94,7 +94,10 @@ impl Invisible {
                     }
                     unknown_tiles[pai.as_usize()] -= 1;
                 }
-                Event::Ankan { .. } | Event::Kakan { .. } | Event::Daiminkan { .. } => {
+                Event::Ankan { .. }
+                | Event::Kakan { .. }
+                | Event::Daiminkan { .. }
+                | Event::Nukidora { .. } => {
                     from_rinshan = true;
                 }
                 Event::Dora { dora_marker } => {
