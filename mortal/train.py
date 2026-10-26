@@ -108,6 +108,10 @@ def train():
     steps = 0
     state_file = config['control']['state_file']
     best_state_file = config['control']['best_state_file']
+    # Optional: keep a copy at every test step, for scoring with evaluate.py.
+    checkpoint_dir = config['control'].get('checkpoint_dir')
+    if checkpoint_dir:
+        os.makedirs(checkpoint_dir, exist_ok=True)
     if path.exists(state_file):
         state = torch.load(state_file, weights_only=True, map_location=device)
         timestamp = datetime.fromtimestamp(state['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
@@ -313,6 +317,8 @@ def train():
                     'config': config,
                 }
                 torch.save(state, state_file)
+                if checkpoint_dir and steps % test_every == 0:
+                    shutil.copy(state_file, path.join(checkpoint_dir, f'{steps}.pth'))
 
                 if online and steps % submit_every != 0:
                     submit_param(mortal, dqn, is_idle=False)

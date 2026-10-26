@@ -8,6 +8,8 @@ online = false
 
 state_file = '/path/to/mortal.pth'
 best_state_file = '/path/to/best.pth'
+# optional: keeps a copy of the state at every test step, named `<steps>.pth`
+checkpoint_dir = '/path/to/checkpoints'
 tensorboard_dir = '/path/to/dir'
 
 device = 'cuda:0'
@@ -34,6 +36,14 @@ repeats = 1
 [test_play]
 games = 3000
 log_dir = '/path/to/test_play'
+
+# for evaluate.py: scores checkpoints on held-out games
+[eval]
+globs = ['/path/to/val/**/*.json.gz']
+device = 'cuda:0'
+batch_size = 512
+num_workers = 1
+file_batch_size = 20
 
 [dataset]
 globs = ['/path/to/dataset/**/*.json.gz']
