@@ -79,6 +79,9 @@ pub(crate) fn register_module(
     m.add_function(wrap_pyfunction!(obs_shape, &m)?)?;
     m.add_function(wrap_pyfunction!(oracle_obs_shape, &m)?)?;
     m.add("MAX_VERSION", MAX_VERSION)?;
+    m.add("NUM_PLAYERS", NUM_PLAYERS)?;
+    m.add("TONPUU", TONPUU)?;
+    m.add("HANCHAN", HANCHAN)?;
     m.add("ACTION_SPACE", ACTION_SPACE)?;
     m.add("GRP_SIZE", GRP_SIZE)?;
     add_submodule(py, prefix, super_mod, &m)

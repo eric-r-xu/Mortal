@@ -599,7 +599,7 @@ impl<'a> ObsEncoderContext<'a> {
             self.idx += 1;
         }
 
-        if self.version == 4 {
+        if matches!(self.version, 4 | 5) {
             if let Ok(SinglePlayerTables { max_ev_table }) = state.single_player_tables() {
                 // Get the max EV from the table that maximizes EV, which should
                 // be the global max EV.
@@ -659,11 +659,6 @@ impl<'a> ObsEncoderContext<'a> {
                 // Skip everything else.
                 self.idx += 2 * 34 + 2 + 3 * MAX_NUM_TURNS;
             }
-        } else if self.version == 5 {
-            // TODO: the single-player EV tables assume 4 players (draws per
-            // turn, payments, the tile set), so version 5 keeps their channels
-            // empty until a sanma calculator exists.
-            self.idx += 2 + 2 * 34 + 2 + 3 * MAX_NUM_TURNS;
         }
 
         assert_eq!(self.idx, self.arr.rows());

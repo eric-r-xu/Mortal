@@ -43,6 +43,11 @@ impl From<InitState> for State {
         let mut akas_in_wall = akas_seen;
         tiles_in_wall.iter_mut().for_each(|v| *v = 4 - *v);
         akas_in_wall.iter_mut().for_each(|v| *v = !*v);
+        if cfg!(feature = "sanma") {
+            // Sanma plays without 2m-8m, so none of them are in the wall.
+            tiles_in_wall[1..8].fill(0);
+            akas_in_wall[0] = false;
+        }
         Self {
             tehai,
             akas_in_hand,

@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from libriichi.consts import NUM_PLAYERS
 
 class RewardCalculator:
     def __init__(self, grp=None, pts=None, uniform_init=False):
@@ -7,7 +8,8 @@ class RewardCalculator:
         self.grp = grp.to(self.device).eval()
         self.uniform_init = uniform_init
 
-        pts = pts or [3, 1, -1, -3]
+        pts = pts or ([3, 1, -1, -3] if NUM_PLAYERS == 4 else [2, 0, -2])
+        assert len(pts) == NUM_PLAYERS, f'need one pt per rank ({NUM_PLAYERS}), got {pts}'
         self.pts = torch.tensor(pts, dtype=torch.float64, device=self.device)
 
     def calc_grp(self, grp_feature):
@@ -24,11 +26,11 @@ class RewardCalculator:
     def calc_rank_prob(self, player_id, grp_feature, rank_by_player):
         matrix = self.calc_grp(grp_feature)
 
-        final_ranking = torch.zeros((1, 4), device=self.device)
+        final_ranking = torch.zeros((1, NUM_PLAYERS), device=self.device)
         final_ranking[0, rank_by_player[player_id]] = 1.
         rank_prob = torch.cat((matrix[:, player_id], final_ranking))
         if self.uniform_init:
-            rank_prob[0, :] = 1 / 4
+            rank_prob[0, :] = 1 / NUM_PLAYERS
         return rank_prob
 
     def calc_delta_pt(self, player_id, grp_feature, rank_by_player):

@@ -2,7 +2,7 @@ use super::{PlayerState, SinglePlayerTables};
 use crate::algo::agari::AgariCalculator;
 use crate::algo::point::Point;
 use crate::algo::shanten;
-use crate::algo::sp::{InitState, SPCalculator};
+use crate::algo::sp::{InitState, MAX_TSUMOS_LEFT, SPCalculator};
 use crate::consts::{END_SCORE, NUM_PLAYERS, NUM_PLAYERS_U8};
 use crate::tile::Tile;
 use crate::vec_ops::vec_add_assign;
@@ -331,17 +331,19 @@ impl PlayerState {
             self.agari_points(is_ron, &[]).unwrap()
         };
 
-        // Calculate the best post-hora situation for us.
+        // Calculate the best post-hora situation for us. Each honba is worth 100
+        // from every other seat: 300 in total, or 200 in sanma.
+        let honba_unit = 100 * (NUM_PLAYERS as i32 - 1);
         let mut exp_scores = self.scores;
         if is_ron {
             exp_scores[0] +=
-                max_win_point.ron + self.kyotaku as i32 * 1000 + self.honba as i32 * 300;
-            exp_scores[target_rel] -= max_win_point.ron + self.honba as i32 * 300;
+                max_win_point.ron + self.kyotaku as i32 * 1000 + self.honba as i32 * honba_unit;
+            exp_scores[target_rel] -= max_win_point.ron + self.honba as i32 * honba_unit;
         } else {
             // The player must be ko here.
             exp_scores[0] += max_win_point.tsumo_total(false)
                 + self.kyotaku as i32 * 1000
-                + self.honba as i32 * 300;
+                + self.honba as i32 * honba_unit;
             exp_scores
                 .iter_mut()
                 .enumerate()
@@ -439,6 +441,10 @@ impl PlayerState {
                     if self.ankan_overview[0].contains(&next) {
                         count += 4;
                     }
+                    // Kitas set aside count as uradora as well.
+                    if next.as_u8() == tu8!(N) {
+                        count += self.kitas[0];
+                    }
                     count
                 })
                 .sum::<u8>();
@@ -505,28 +511,41 @@ impl PlayerState {
     }
 
     /// Can be called at both 3n+1 and 3n+2, but `self.real_time_shanten` must
-    /// be >= 0 and `self.tiles_left` must be >= 4.
+    /// be >= 0 and `self.tiles_left` must be >= `NUM_PLAYERS`.
     ///
     /// This function is currently highly internal.
     pub(super) fn single_player_tables(&self) -> Result<SinglePlayerTables> {
-        ensure!(self.tiles_left >= 4, "need at least one more tsumo");
+        ensure!(
+            self.tiles_left >= NUM_PLAYERS_U8,
+            "need at least one more tsumo"
+        );
 
         let cur_shanten = self.real_time_shanten();
         ensure!(cur_shanten >= 0, "can't calculate an agari hand");
 
         let mut can_discard = self.last_cans.can_discard;
         let (tsumos_left, calc_haitei) = if can_discard {
-            (self.tiles_left / 4, self.tiles_left.is_multiple_of(4))
+            (
+                self.tiles_left / NUM_PLAYERS_U8,
+                self.tiles_left.is_multiple_of(NUM_PLAYERS_U8),
+            )
         } else {
             let target = self.rel(self.last_cans.target_actor) as u8;
             // Let's just ignore chankan here.
-            let tiles_left_at_next_tsumo = self.tiles_left.saturating_sub(4 - target);
+            let tiles_left_at_next_tsumo = self.tiles_left.saturating_sub(NUM_PLAYERS_U8 - target);
             (
-                tiles_left_at_next_tsumo / 4,
-                tiles_left_at_next_tsumo.is_multiple_of(4),
+                tiles_left_at_next_tsumo / NUM_PLAYERS_U8,
+                tiles_left_at_next_tsumo.is_multiple_of(NUM_PLAYERS_U8),
             )
         };
         ensure!(tsumos_left >= 1, "need at least one more tsumo");
+        // The sanma dealer's first discard has 18 draws left; look ahead only
+        // 17 then, which also puts the last draw (haitei) out of reach.
+        let (tsumos_left, calc_haitei) = if tsumos_left as usize > MAX_TSUMOS_LEFT {
+            (MAX_TSUMOS_LEFT as u8, false)
+        } else {
+            (tsumos_left, calc_haitei)
+        };
 
         let num_doras_in_fuuro = if self.is_menzen && self.ankan_overview[0].is_empty() {
             0

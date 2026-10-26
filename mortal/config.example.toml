@@ -2,6 +2,7 @@
 # types; they are often not optimal and must be tuned.
 
 [control]
+# 5 for sanma builds (the only version they support)
 version = 4
 online = false
 
@@ -47,8 +48,10 @@ augmented_first = false
 
 [env]
 gamma = 1
+# one pt per rank: 3 values in sanma, e.g. [4.0, 2.0, 0.0]
 pts = [6.0, 4.0, 2.0, 0.0]
-# scheduled hands per game: 8 = hanchan, 4 = East-only (tonpuu, Tenhou rules)
+# scheduled hands per game: 8 = hanchan, 4 = East-only (tonpuu, Tenhou rules);
+# 6 and 3 in sanma
 game_length = 8
 
 [resnet]

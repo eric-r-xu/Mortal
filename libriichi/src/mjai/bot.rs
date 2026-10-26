@@ -1,6 +1,7 @@
 use super::EventWithCanAct;
 use super::{Event, EventExt};
 use crate::agent::{BatchAgent, MortalBatchAgent};
+use crate::consts::{HANCHAN, TONPUU};
 use crate::state::PlayerState;
 
 use anyhow::{Context, Result, ensure};
@@ -16,13 +17,13 @@ pub struct Bot {
 
 #[pymethods]
 impl Bot {
-    /// `game_length` is 8 for hanchan and 4 for tonpuu.
+    /// `game_length` is 8 for hanchan and 4 for tonpuu (6 and 3 in sanma).
     #[new]
-    #[pyo3(signature = (engine, player_id, *, game_length=8))]
+    #[pyo3(signature = (engine, player_id, *, game_length=HANCHAN))]
     fn new(engine: PyObject, player_id: u8, game_length: u8) -> Result<Self> {
         ensure!(
-            matches!(game_length, 4 | 8),
-            "game_length must be 4 (tonpuu) or 8 (hanchan), got {game_length}",
+            matches!(game_length, TONPUU | HANCHAN),
+            "game_length must be {TONPUU} (tonpuu) or {HANCHAN} (hanchan), got {game_length}",
         );
         let agent = MortalBatchAgent::new(engine, &[player_id])?;
         let state = PlayerState::new_with_length(player_id, game_length);

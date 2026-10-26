@@ -5,7 +5,8 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from typing import *
 from functools import partial
 from itertools import permutations
-from libriichi.consts import obs_shape, oracle_obs_shape, ACTION_SPACE, GRP_SIZE
+from math import factorial
+from libriichi.consts import obs_shape, oracle_obs_shape, ACTION_SPACE, GRP_SIZE, NUM_PLAYERS
 
 class ChannelAttention(nn.Module):
     def __init__(self, channels, ratio=16, actv_builder=nn.ReLU, bias=True):
@@ -238,13 +239,14 @@ class GRP(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(hidden_size * num_layers, hidden_size * num_layers),
             nn.ReLU(inplace=True),
-            nn.Linear(hidden_size * num_layers, 24),
+            nn.Linear(hidden_size * num_layers, factorial(NUM_PLAYERS)),
         )
         for mod in self.modules():
             mod.to(torch.float64)
 
         # perms are the permutations of all possible rank-by-player result
-        perms = torch.tensor(list(permutations(range(4))))
+        # (24 of 4 players, or 6 in sanma)
+        perms = torch.tensor(list(permutations(range(NUM_PLAYERS))))
         perms_t = perms.transpose(0, 1)
         self.register_buffer('perms', perms)     # (24, 4)
         self.register_buffer('perms_t', perms_t) # (4, 24)
@@ -253,6 +255,7 @@ class GRP(nn.Module):
     # grand_kyoku: E1 = 0, S4 = 7, W4 = 11
     # s is 2.5 at E1
     # s[0] is score of player id 0
+    # sanma: s[0..3], S3 = 5, W3 = 8, and s is 3.5 at E1
     def forward(self, inputs: List[Tensor]):
         lengths = torch.tensor([t.shape[0] for t in inputs], dtype=torch.int64)
         inputs = pad_sequence(inputs, batch_first=True)
@@ -269,9 +272,9 @@ class GRP(nn.Module):
     def calc_matrix(self, logits: Tensor):
         batch_size = logits.shape[0]
         probs = logits.softmax(-1)
-        matrix = torch.zeros(batch_size, 4, 4, dtype=probs.dtype)
-        for player in range(4):
-            for rank in range(4):
+        matrix = torch.zeros(batch_size, NUM_PLAYERS, NUM_PLAYERS, dtype=probs.dtype)
+        for player in range(NUM_PLAYERS):
+            for rank in range(NUM_PLAYERS):
                 cond = self.perms_t[player] == rank
                 matrix[:, player, rank] = probs[:, cond].sum(-1)
         return matrix

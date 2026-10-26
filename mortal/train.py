@@ -24,7 +24,7 @@ def train():
     from dataloader import FileDatasetsIter, worker_init_fn
     from lr_scheduler import LinearWarmUpCosineAnnealingLR
     from model import Brain, DQN, AuxNet
-    from libriichi.consts import obs_shape
+    from libriichi.consts import obs_shape, NUM_PLAYERS
     from config import config
 
     version = config['control']['version']
@@ -61,7 +61,7 @@ def train():
 
     mortal = Brain(version=version, **config['resnet']).to(device)
     dqn = DQN(version=version).to(device)
-    aux_net = AuxNet((4,)).to(device)
+    aux_net = AuxNet((NUM_PLAYERS,)).to(device)
     all_models = (mortal, dqn, aux_net)
     if enable_compile:
         for m in all_models:
@@ -94,9 +94,14 @@ def train():
     optimizer = optim.AdamW(param_groups, lr=1, weight_decay=0, betas=betas, eps=eps)
     scheduler = LinearWarmUpCosineAnnealingLR(optimizer, **config['optim']['scheduler'])
     scaler = GradScaler(device.type, enabled=enable_amp)
-    test_player = TestPlayer()
+    # Test play and online training run games in libriichi's arena, which has
+    # no sanma version, so sanma trains offline without them and never writes
+    # `best_state_file`.
+    enable_test_play = NUM_PLAYERS == 4
+    assert enable_test_play or not online, 'online training needs the arena, which sanma lacks'
+    test_player = TestPlayer() if enable_test_play else None
     best_perf = {
-        'avg_rank': 4.,
+        'avg_rank': float(NUM_PLAYERS),
         'avg_pt': -135.,
     }
 
@@ -313,7 +318,7 @@ def train():
                     submit_param(mortal, dqn, is_idle=False)
                     logging.info('param has been submitted')
 
-                if steps % test_every == 0:
+                if enable_test_play and steps % test_every == 0:
                     stat = test_player.test_play(test_games // 4, mortal, dqn, device)
                     mortal.train()
                     dqn.train()

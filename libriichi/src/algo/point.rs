@@ -1,3 +1,5 @@
+use crate::consts::NUM_PLAYERS;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Point {
     pub ron: i32,
@@ -101,13 +103,16 @@ impl Point {
         }
     }
 
+    /// In sanma, the two payers pay their usual shares and nobody covers the
+    /// empty seat (tsumo loss).
     #[inline]
     #[must_use]
     pub const fn tsumo_total(self, is_oya: bool) -> i32 {
+        let num_ko = NUM_PLAYERS as i32 - 1;
         if is_oya {
-            self.tsumo_ko * 3
+            self.tsumo_ko * num_ko
         } else {
-            self.tsumo_ko * 2 + self.tsumo_oya
+            self.tsumo_ko * (num_ko - 1) + self.tsumo_oya
         }
     }
 }
@@ -149,6 +154,20 @@ mod test {
                 assert_eq!(points_oya.tsumo_ko, get_points(2), "{fu}/{han}");
                 assert_eq!(points_oya.ron, get_points(6), "{fu}/{han}");
             }
+        }
+    }
+
+    #[test]
+    fn tsumo_total() {
+        let ko = Point::calc(false, 30, 3);
+        let oya = Point::calc(true, 30, 3);
+        if cfg!(feature = "sanma") {
+            // 1000/2000 and 2000 all, without the empty seat's share.
+            assert_eq!(ko.tsumo_total(false), 3000);
+            assert_eq!(oya.tsumo_total(true), 4000);
+        } else {
+            assert_eq!(ko.tsumo_total(false), 4000);
+            assert_eq!(oya.tsumo_total(true), 6000);
         }
     }
 }
