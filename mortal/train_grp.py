@@ -87,6 +87,7 @@ def train():
     val_steps = cfg['control']['val_steps']
 
     device = torch.device(cfg['control']['device'])
+    assert device.type != 'mps', 'GRP runs in float64, which MPS lacks; train it on cpu'
     torch.backends.cudnn.benchmark = cfg['control']['enable_cudnn_benchmark']
     if device.type == 'cuda':
         logging.info(f'device: {device} ({torch.cuda.get_device_name(device)})')
