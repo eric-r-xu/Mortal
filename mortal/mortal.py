@@ -10,17 +10,18 @@ from engine import MortalEngine
 from common import filtered_trimmed_lines
 from libriichi.mjai import Bot
 from libriichi.dataset import Grp
+from libriichi.consts import NUM_PLAYERS
 from config import config, GAME_LENGTH
 
-USAGE = '''Usage: python mortal.py <ID>
+USAGE = f'''Usage: python mortal.py <ID>
 
 ARGS:
-    <ID>    The player ID, an integer within [0, 3].'''
+    <ID>    The player ID, an integer within [0, {NUM_PLAYERS - 1}].'''
 
 def main():
     try:
         player_id = int(sys.argv[-1])
-        assert player_id in range(4)
+        assert player_id in range(NUM_PLAYERS)
     except:
         print(USAGE, file=sys.stderr)
         sys.exit(1)

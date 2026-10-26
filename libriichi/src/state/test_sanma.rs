@@ -284,6 +284,55 @@ fn version_5_obs_shape_and_kita_features() {
 }
 
 #[test]
+fn version_5_fills_the_ev_channels() {
+    use ndarray::s;
+
+    // Two-shanten: 123p 456p 789s, with 1m, 9m and winds left over.
+    let hand = r#"["1p","2p","3p","4p","5p","6p","7s","8s","9s","1m","9m","E","S"]"#;
+    let mut ps = start(0, hand, "C");
+    // The dealer's first discard, with 18 draws left.
+    tsumo(&mut ps, 0, "W");
+    let (obs, _) = ps.encode_obs(5, false);
+    // The single-player EV block is the last 123 channels.
+    assert!(obs.slice(s![777 - 123.., ..]).iter().any(|&v| v > 0.));
+    // 2m-8m are never among the tiles a discard needs, since sanma has none.
+    let required = obs.slice(s![777 - 121..777 - 53, 1..8]);
+    assert!(required.iter().all(|&v| v == 0.));
+}
+
+#[test]
+fn kitas_count_as_uradora() {
+    // 234p 567p 234s 678s with a 5s tanki: riichi, menzen tsumo and tanyao.
+    let hand = r#"["2p","3p","4p","5p","6p","7p","2s","3s","4s","6s","7s","8s","5s"]"#;
+    let mut ps = start(0, hand, "C");
+    tsumo(&mut ps, 0, "N");
+    kita(&mut ps, 0);
+    tsumo(&mut ps, 0, "W");
+    ps.update_json(r#"{"type":"reach","actor":0}"#).unwrap();
+    ps.update_json(r#"{"type":"dahai","actor":0,"pai":"W","tsumogiri":true}"#)
+        .unwrap();
+    ps.update_json(r#"{"type":"reach_accepted","actor":0}"#)
+        .unwrap();
+    // An opponent's kita ends ippatsu.
+    tsumo(&mut ps, 1, "?");
+    kita(&mut ps, 1);
+    tsumo(&mut ps, 1, "?");
+    ps.update_json(r#"{"type":"dahai","actor":1,"pai":"E","tsumogiri":true}"#)
+        .unwrap();
+    tsumo(&mut ps, 2, "?");
+    ps.update_json(r#"{"type":"dahai","actor":2,"pai":"E","tsumogiri":true}"#)
+        .unwrap();
+    tsumo(&mut ps, 0, "5s");
+    assert!(ps.last_cans.can_tsumo_agari);
+
+    // 4 han 30 fu with the kita as a dora, and a West ura indicator turns the
+    // kita into one more han.
+    use crate::t;
+    assert_eq!(ps.agari_points(false, &[t!(C)]).unwrap().tsumo_ko, 3900);
+    assert_eq!(ps.agari_points(false, &[t!(W)]).unwrap().tsumo_ko, 4000);
+}
+
+#[test]
 #[should_panic(expected = "sanma builds support only version 5")]
 fn version_4_is_refused_in_sanma() {
     let hand = r#"["1p","2p","3p","4p","5p","6p","7p","8p","9p","1s","2s","3s","E"]"#;
