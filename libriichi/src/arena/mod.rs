@@ -1,9 +1,13 @@
+// The sanma board keeps the four-player board's interface, so the rest of the
+// arena drives either.
+#[cfg_attr(feature = "sanma", path = "sanma_board.rs")]
 mod board;
 mod game;
 mod one_vs_three;
 mod result;
 #[cfg(not(feature = "sanma"))]
 mod two_vs_two;
+mod wall;
 
 pub use board::Board;
 pub use result::GameResult;

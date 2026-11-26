@@ -42,6 +42,8 @@ def train():
     assert test_every % save_every == 0
 
     device = torch.device(config['control']['device'])
+    # MPS (Apple GPUs) has no float64; the rewards are cast to float32 below anyway.
+    reward_dtype = torch.float32 if device.type == 'mps' else torch.float64
     torch.backends.cudnn.benchmark = config['control']['enable_cudnn_benchmark']
     enable_amp = config['control']['enable_amp']
     enable_compile = config['control']['enable_compile']
@@ -108,6 +110,10 @@ def train():
     steps = 0
     state_file = config['control']['state_file']
     best_state_file = config['control']['best_state_file']
+    # Optional: keep a copy at every test step, for scoring with evaluate.py.
+    checkpoint_dir = config['control'].get('checkpoint_dir')
+    if checkpoint_dir:
+        os.makedirs(checkpoint_dir, exist_ok=True)
     if path.exists(state_file):
         state = torch.load(state_file, weights_only=True, map_location=device)
         timestamp = datetime.fromtimestamp(state['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
@@ -226,7 +232,7 @@ def train():
             actions = actions.to(dtype=torch.int64, device=device)
             masks = masks.to(dtype=torch.bool, device=device)
             steps_to_done = steps_to_done.to(dtype=torch.int64, device=device)
-            kyoku_rewards = kyoku_rewards.to(dtype=torch.float64, device=device)
+            kyoku_rewards = kyoku_rewards.to(dtype=reward_dtype, device=device)
             player_ranks = player_ranks.to(dtype=torch.int64, device=device)
             assert masks[range(batch_size), actions].all()
 
@@ -313,6 +319,8 @@ def train():
                     'config': config,
                 }
                 torch.save(state, state_file)
+                if checkpoint_dir and steps % test_every == 0:
+                    shutil.copy(state_file, path.join(checkpoint_dir, f'{steps}.pth'))
 
                 if online and steps % submit_every != 0:
                     submit_param(mortal, dqn, is_idle=False)
