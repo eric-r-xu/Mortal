@@ -11,7 +11,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use ndarray::prelude::*;
 
 pub struct BatchGame {
-    /// 8 for hanchan and 4 for tonpuu
+    /// 8 for hanchan and 4 for tonpuu (6 and 3 in sanma)
     pub length: u8,
     pub init_scores: [i32; NUM_PLAYERS],
     pub disable_progress_bar: bool,
@@ -265,12 +265,6 @@ impl BatchGame {
         indexes: &[[Index; NUM_PLAYERS]],
         seeds: &[(u64, u64)],
     ) -> Result<Vec<GameResult>> {
-        // The wall, kita, no-chi rules and tsumo-loss scoring are not built yet, so a
-        // sanma game would play by 4-player rules on 3 seats.
-        ensure!(
-            !cfg!(feature = "sanma"),
-            "the sanma arena is not implemented yet"
-        );
         ensure!(!agents.is_empty());
         ensure!(!indexes.is_empty());
         ensure!(
@@ -289,6 +283,10 @@ impl BatchGame {
                 for (i, idx) in idxs.iter().enumerate() {
                     agents[idx.agent_idx].start_game(idx.player_id_idx)?;
                     oracle_obs_versions[i] = agents[idx.agent_idx].oracle_obs_version();
+                    ensure!(
+                        !cfg!(feature = "sanma") || oracle_obs_versions[i].is_none(),
+                        "the sanma arena has no oracle observation",
+                    );
                 }
 
                 let game = Box::new(Game {
@@ -464,13 +462,11 @@ mod test {
     }
 
     #[test]
-    #[cfg_attr(feature = "sanma", ignore = "the sanma arena is not implemented yet")]
     fn tonpuu_ends_by_s4() {
         check_game_ends(&BatchGame::tenhou_tonpuu(true), 16);
     }
 
     #[test]
-    #[cfg_attr(feature = "sanma", ignore = "the sanma arena is not implemented yet")]
     fn hanchan_ends_by_w4() {
         check_game_ends(&BatchGame::tenhou_hanchan(true), 4);
     }
