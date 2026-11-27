@@ -61,6 +61,16 @@ def train():
     weight_decay = config['optim']['weight_decay']
     max_grad_norm = config['optim']['max_grad_norm']
 
+    # Online only: a share of every batch comes from offline games (all seats),
+    # so the trainee keeps training on the data it started from. The rest is
+    # the trainee's own self-play. CQL, off online, can apply to those rows.
+    mix_cfg = config['online'].get('mix', {}) if online else {}
+    mix_bs = round(batch_size * mix_cfg.get('ratio', 0.))
+    assert 0 <= mix_bs < batch_size
+    play_bs = batch_size - mix_bs
+    use_cql = not online or (mix_bs > 0 and mix_cfg.get('min_q_weight', 0) > 0)
+    cql_weight = min_q_weight if not online else mix_cfg.get('min_q_weight', 0)
+
     mortal = Brain(version=version, **config['resnet']).to(device)
     dqn = DQN(version=version).to(device)
     aux_net = AuxNet((NUM_PLAYERS,)).to(device)
@@ -96,11 +106,9 @@ def train():
     optimizer = optim.AdamW(param_groups, lr=1, weight_decay=0, betas=betas, eps=eps)
     scheduler = LinearWarmUpCosineAnnealingLR(optimizer, **config['optim']['scheduler'])
     scaler = GradScaler(device.type, enabled=enable_amp)
-    # Test play and online training run games in libriichi's arena, which has
-    # no sanma version, so sanma trains offline without them and never writes
-    # `best_state_file`.
+    # Test play is four-player only, so sanma never writes `best_state_file`;
+    # score sanma checkpoints with arena_1v2.py instead.
     enable_test_play = NUM_PLAYERS == 4
-    assert enable_test_play or not online, 'online training needs the arena, which sanma lacks'
     test_player = TestPlayer() if enable_test_play else None
     best_perf = {
         'avg_rank': float(NUM_PLAYERS),
@@ -140,6 +148,29 @@ def train():
     if online:
         submit_param(mortal, dqn, is_idle=True)
         logging.info('param has been submitted')
+
+    mix_iter = None
+    if mix_bs > 0:
+        mix_files = []
+        for pat in mix_cfg['globs']:
+            mix_files.extend(glob(pat, recursive=True))
+        logging.info(f'mixing {mix_bs} of every {batch_size} samples from {len(mix_files):,} offline games')
+        # kept open across epochs; the epoch count only has to outlast the run
+        mix_iter = iter(DataLoader(
+            dataset = FileDatasetsIter(
+                version = version,
+                file_list = mix_files,
+                pts = pts,
+                file_batch_size = file_batch_size,
+                num_epochs = mix_cfg.get('num_epochs', 1000),
+                enable_augmentation = mix_cfg.get('enable_augmentation', False),
+            ),
+            batch_size = mix_bs,
+            drop_last = True,
+            num_workers = mix_cfg.get('num_workers', 1),
+            pin_memory = True,
+            worker_init_fn = worker_init_fn,
+        ))
 
     writer = SummaryWriter(config['control']['tensorboard_dir'])
     stats = {
@@ -207,7 +238,7 @@ def train():
         )
         data_loader = iter(DataLoader(
             dataset = file_data,
-            batch_size = batch_size,
+            batch_size = play_bs,
             drop_last = False,
             num_workers = num_workers,
             pin_memory = True,
@@ -228,6 +259,15 @@ def train():
             nonlocal idx
             nonlocal pb
 
+            if mix_iter is not None:
+                # offline rows go last, so they are `[play_bs:]`
+                obs, actions, masks, steps_to_done, kyoku_rewards, player_ranks = (
+                    torch.cat((a, b)) for a, b in zip(
+                        (obs, actions, masks, steps_to_done, kyoku_rewards, player_ranks),
+                        next(mix_iter),
+                    )
+                )
+
             obs = obs.to(dtype=torch.float32, device=device)
             actions = actions.to(dtype=torch.int64, device=device)
             masks = masks.to(dtype=torch.bool, device=device)
@@ -247,20 +287,22 @@ def train():
                 cql_loss = 0
                 if not online:
                     cql_loss = q_out.logsumexp(-1).mean() - q.mean()
+                elif use_cql:
+                    cql_loss = q_out[play_bs:].logsumexp(-1).mean() - q[play_bs:].mean()
 
                 next_rank_logits, = aux_net(phi)
                 next_rank_loss = ce(next_rank_logits, player_ranks)
 
                 loss = sum((
                     dqn_loss,
-                    cql_loss * min_q_weight,
+                    cql_loss * cql_weight,
                     next_rank_loss * next_rank_weight,
                 ))
             scaler.scale(loss / opt_step_every).backward()
 
             with torch.inference_mode():
                 stats['dqn_loss'] += dqn_loss
-                if not online:
+                if use_cql:
                     stats['cql_loss'] += cql_loss
                 stats['next_rank_loss'] += next_rank_loss
                 all_q[idx] = q
@@ -291,7 +333,7 @@ def train():
                 all_q_target_1d = all_q_target.cpu().numpy().flatten()[::128]
 
                 writer.add_scalar('loss/dqn_loss', stats['dqn_loss'] / save_every, steps)
-                if not online:
+                if use_cql:
                     writer.add_scalar('loss/cql_loss', stats['cql_loss'] / save_every, steps)
                 writer.add_scalar('loss/next_rank_loss', stats['next_rank_loss'] / save_every, steps)
                 writer.add_scalar('hparam/lr', scheduler.get_last_lr()[0], steps)
@@ -320,7 +362,11 @@ def train():
                 }
                 torch.save(state, state_file)
                 if checkpoint_dir and steps % test_every == 0:
-                    shutil.copy(state_file, path.join(checkpoint_dir, f'{steps}.pth'))
+                    # copy, then rename, so a reader (the online opponent
+                    # pool) never loads a half-written file
+                    checkpoint = path.join(checkpoint_dir, f'{steps}.pth')
+                    shutil.copy(state_file, checkpoint + '.tmp')
+                    os.replace(checkpoint + '.tmp', checkpoint)
 
                 if online and steps % submit_every != 0:
                     submit_param(mortal, dqn, is_idle=False)
@@ -401,7 +447,7 @@ def train():
 
         for obs, actions, masks, steps_to_done, kyoku_rewards, player_ranks in data_loader:
             bs = obs.shape[0]
-            if bs != batch_size:
+            if bs != play_bs:
                 remaining_obs.append(obs)
                 remaining_actions.append(actions)
                 remaining_masks.append(masks)
@@ -412,7 +458,7 @@ def train():
                 continue
             train_batch(obs, actions, masks, steps_to_done, kyoku_rewards, player_ranks)
 
-        remaining_batches = remaining_bs // batch_size
+        remaining_batches = remaining_bs // play_bs
         if remaining_batches > 0:
             obs = torch.cat(remaining_obs, dim=0)
             actions = torch.cat(remaining_actions, dim=0)
@@ -421,7 +467,7 @@ def train():
             kyoku_rewards = torch.cat(remaining_kyoku_rewards, dim=0)
             player_ranks = torch.cat(remaining_player_ranks, dim=0)
             start = 0
-            end = batch_size
+            end = play_bs
             while end <= remaining_bs:
                 train_batch(
                     obs[start:end],
@@ -432,7 +478,7 @@ def train():
                     player_ranks[start:end],
                 )
                 start = end
-                end += batch_size
+                end += play_bs
         pb.close()
 
         if online:

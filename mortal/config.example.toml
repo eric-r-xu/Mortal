@@ -93,7 +93,14 @@ max_steps = 0
 [baseline.train]
 device = 'cuda:0'
 enable_compile = false
+# half precision for the trainee and the opponents in train play (default true)
+enable_amp = true
 state_file = '/path/to/baseline.pth'
+# optional opponent pool: each session plays `state_file` with probability
+# `anchor_ratio`, otherwise a uniform pick among the files matching `pool_glob`
+# (such as the trainee's own checkpoints in `checkpoint_dir`)
+# pool_glob = '/path/to/checkpoints/*.pth'
+# anchor_ratio = 0.5
 
 [baseline.test]
 device = 'cuda:0'
@@ -104,8 +111,17 @@ state_file = '/path/to/baseline.pth'
 history_window = 50
 enable_compile = false
 
+# optional: `ratio` of every batch is drawn from offline games (all seats)
+# instead of self-play, with CQL on those rows at `min_q_weight` (0 = off)
+# [online.mix]
+# globs = ['/path/to/dataset/**/*.json.gz']
+# ratio = 0.25
+# min_q_weight = 1
+# num_workers = 1
+
 [online.remote]
 host = '127.0.0.1'
+# macOS's AirPlay Receiver listens on 5000; pick another port there
 port = 5000
 
 [online.server]

@@ -2,8 +2,10 @@ import torch
 import numpy as np
 import os
 import shutil
+import random
 import secrets
 import logging
+from glob import glob
 from os import path
 from model import Brain, DQN
 from engine import MortalEngine
@@ -74,34 +76,48 @@ class TestPlayer:
         torch.backends.cudnn.benchmark = config['control']['enable_cudnn_benchmark']
         return stat
 
+def load_baseline(state_file, device, enable_compile, enable_amp):
+    state = torch.load(state_file, weights_only=True, map_location=torch.device('cpu'))
+    cfg = state['config']
+    version = cfg['control'].get('version', 1)
+    conv_channels = cfg['resnet']['conv_channels']
+    num_blocks = cfg['resnet']['num_blocks']
+    stable_mortal = Brain(version=version, conv_channels=conv_channels, num_blocks=num_blocks).eval()
+    stable_dqn = DQN(version=version).eval()
+    stable_mortal.load_state_dict(state['mortal'])
+    stable_dqn.load_state_dict(state['current_dqn'])
+    if enable_compile:
+        stable_mortal.compile()
+        stable_dqn.compile()
+
+    return MortalEngine(
+        stable_mortal,
+        stable_dqn,
+        is_oracle = False,
+        version = version,
+        device = device,
+        enable_amp = enable_amp,
+        enable_rule_based_agari_guard = True,
+        name = 'baseline',
+    )
+
 class TrainPlayer:
     def __init__(self):
         baseline_cfg = config['baseline']['train']
-        device = torch.device(baseline_cfg['device'])
+        self.baseline_device = torch.device(baseline_cfg['device'])
+        self.baseline_compile = baseline_cfg['enable_compile']
+        # for both sides; half precision measured no faster on an M4
+        self.enable_amp = baseline_cfg.get('enable_amp', True)
 
-        state = torch.load(baseline_cfg['state_file'], weights_only=True, map_location=torch.device('cpu'))
-        cfg = state['config']
-        version = cfg['control'].get('version', 1)
-        conv_channels = cfg['resnet']['conv_channels']
-        num_blocks = cfg['resnet']['num_blocks']
-        stable_mortal = Brain(version=version, conv_channels=conv_channels, num_blocks=num_blocks).eval()
-        stable_dqn = DQN(version=version).eval()
-        stable_mortal.load_state_dict(state['mortal'])
-        stable_dqn.load_state_dict(state['current_dqn'])
-        if baseline_cfg['enable_compile']:
-            stable_mortal.compile()
-            stable_dqn.compile()
-
-        self.baseline_engine = MortalEngine(
-            stable_mortal,
-            stable_dqn,
-            is_oracle = False,
-            version = version,
-            device = device,
-            enable_amp = True,
-            enable_rule_based_agari_guard = True,
-            name = 'baseline',
-        )
+        # Opponent pool: each session plays one opponent in every other seat,
+        # `state_file` (the anchor) with probability `anchor_ratio`, otherwise
+        # a uniform pick among the files matching `pool_glob`, such as the
+        # trainee's own past checkpoints. Without a pool it is always the anchor.
+        self.anchor_file = baseline_cfg['state_file']
+        self.pool_glob = baseline_cfg.get('pool_glob')
+        self.anchor_ratio = baseline_cfg.get('anchor_ratio', 1.0)
+        self.baseline_file = None
+        self.baseline_engine = None
 
         profile = os.environ.get('TRAIN_PLAY_PROFILE', 'default')
         logging.info(f'using profile {profile}')
@@ -120,8 +136,21 @@ class TrainPlayer:
         self.repeats = cfg['repeats']
         self.repeat_counter = 0
 
+    def pick_baseline(self):
+        """Choose this session's opponent and load it if it changed."""
+        pool = sorted(glob(self.pool_glob)) if self.pool_glob else []
+        if not pool or random.random() < self.anchor_ratio:
+            chosen = self.anchor_file
+        else:
+            chosen = random.choice(pool)
+        if chosen != self.baseline_file:
+            self.baseline_engine = load_baseline(chosen, self.baseline_device, self.baseline_compile, self.enable_amp)
+            self.baseline_file = chosen
+        return chosen
+
     def train_play(self, mortal, dqn, device):
         torch.backends.cudnn.benchmark = False
+        self.pick_baseline()
         engine_chal = MortalEngine(
             mortal,
             dqn,
@@ -131,7 +160,7 @@ class TrainPlayer:
             boltzmann_temp = self.boltzmann_temp,
             top_p = self.top_p,
             device = device,
-            enable_amp = True,
+            enable_amp = self.enable_amp,
             name = 'trainee',
         )
 
