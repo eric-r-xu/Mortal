@@ -9,6 +9,7 @@ from model import Brain, DQN
 from engine import MortalEngine
 from libriichi.stat import Stat
 from libriichi.arena import OneVsThree
+from libriichi.consts import NUM_PLAYERS
 from config import config, GAME_LENGTH
 
 class TestPlayer:
@@ -110,7 +111,8 @@ class TrainPlayer:
         self.train_key = secrets.randbits(64)
         self.train_seed = 10000
 
-        self.seed_count = cfg['games'] // 4
+        # each seed is played once per seat
+        self.seed_count = cfg['games'] // NUM_PLAYERS
         self.boltzmann_epsilon = cfg['boltzmann_epsilon']
         self.boltzmann_temp = cfg['boltzmann_temp']
         self.top_p = cfg['top_p']

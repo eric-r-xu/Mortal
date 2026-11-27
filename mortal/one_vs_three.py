@@ -7,12 +7,14 @@ import os
 from model import Brain, DQN
 from engine import MortalEngine
 from libriichi.arena import OneVsThree
+from libriichi.consts import NUM_PLAYERS
 from config import config, GAME_LENGTH
 
 def main():
     cfg = config['1v3']
     games_per_iter = cfg['games_per_iter']
-    seeds_per_iter = games_per_iter // 4
+    # each seed is played once per seat
+    seeds_per_iter = games_per_iter // NUM_PLAYERS
     iters = cfg['iters']
     log_dir = cfg['log_dir']
     use_akochan = cfg['akochan']['enabled']
@@ -93,9 +95,13 @@ def main():
                 seed_count = seeds_per_iter,
             )
         rankings = np.array(rankings)
-        avg_rank = rankings @ np.arange(1, 5) / rankings.sum()
-        avg_pt = rankings @ np.array([90, 45, 0, -135]) / rankings.sum()
-        print(f'challenger rankings: {rankings} ({avg_rank}, {avg_pt}pt)')
+        avg_rank = rankings @ np.arange(1, NUM_PLAYERS + 1) / rankings.sum()
+        if NUM_PLAYERS == 4:
+            # Tenhou's four-player dan points
+            avg_pt = rankings @ np.array([90, 45, 0, -135]) / rankings.sum()
+            print(f'challenger rankings: {rankings} ({avg_rank}, {avg_pt}pt)')
+        else:
+            print(f'challenger rankings: {rankings} ({avg_rank})')
 
 if __name__ == '__main__':
     try:
