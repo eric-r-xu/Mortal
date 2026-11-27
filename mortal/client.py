@@ -9,6 +9,7 @@ import gc
 from os import path
 from model import Brain, DQN
 from player import TrainPlayer
+from libriichi.consts import NUM_PLAYERS
 from common import send_msg, recv_msg
 from config import config
 
@@ -28,7 +29,9 @@ def main():
     train_player = TrainPlayer()
     param_version = -1
 
-    pts = np.array([90, 45, 0, -135])
+    # for display only: Tenhou dan pts in four-player, the training pts in sanma
+    pts = np.array([90, 45, 0, -135] if NUM_PLAYERS == 4 else config['env']['pts'])
+    places = np.arange(1, NUM_PLAYERS + 1)
     history_window = config['online']['history_window']
     history = []
 
@@ -51,16 +54,17 @@ def main():
         logging.info('param has been updated')
 
         rankings, file_list = train_player.train_play(mortal, dqn, device)
-        avg_rank = rankings @ np.arange(1, 5) / rankings.sum()
+        avg_rank = rankings @ places / rankings.sum()
         avg_pt = rankings @ pts / rankings.sum()
 
         history.append(np.array(rankings))
         if len(history) > history_window:
             del history[0]
         sum_rankings = np.sum(history, axis=0)
-        ma_avg_rank = sum_rankings @ np.arange(1, 5) / sum_rankings.sum()
+        ma_avg_rank = sum_rankings @ places / sum_rankings.sum()
         ma_avg_pt = sum_rankings @ pts / sum_rankings.sum()
 
+        logging.info(f'opponent: {path.basename(train_player.baseline_file)}')
         logging.info(f'trainee rankings: {rankings} ({avg_rank:.6}, {avg_pt:.6}pt)')
         logging.info(f'last {len(history)} sessions: {sum_rankings} ({ma_avg_rank:.6}, {ma_avg_pt:.6}pt)')
 
@@ -78,8 +82,11 @@ def main():
             })
             logging.info('logs have been submitted')
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        elif device.type == 'mps':
+            torch.mps.empty_cache()
 
 if __name__ == '__main__':
     try:
