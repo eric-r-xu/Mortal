@@ -4,10 +4,10 @@ use crate::mjai::Event;
 use crate::py_helper::add_submodule;
 use crate::rankings::Rankings;
 use crate::vec_ops::vec_add_assign;
-use std::fmt;
 use std::fs::File;
 use std::io;
 use std::time::Duration;
+use std::{array, fmt};
 
 use anyhow::{Context, Result, bail};
 use derive_more::{Add, AddAssign, Sum};
@@ -17,6 +17,14 @@ use indicatif::{ProgressBar, ProgressStyle};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use serde_json as json;
+
+/// Rank points for the `Avg rank pt` line of the printed summary: Tenhou's
+/// four-player dan points, or in sanma the rank points sanma training uses
+/// (`[env] pts`), since Tenhou's sanma dan points are not modeled here.
+#[cfg(feature = "sanma")]
+const DISPLAY_RANK_PTS: [i64; NUM_PLAYERS] = [4, 2, 0];
+#[cfg(not(feature = "sanma"))]
+const DISPLAY_RANK_PTS: [i64; NUM_PLAYERS] = [90, 45, 0, -135];
 
 /// Notes:
 ///
@@ -203,8 +211,8 @@ Nagashi mangan (rate) {} ({:.9})"#,
             self.tobi,
             self.tobi_rate(),
             self.avg_rank(),
-            self.total_pt([90, 45, 0, -135]),
-            self.avg_pt([90, 45, 0, -135]),
+            self.total_pt(DISPLAY_RANK_PTS),
+            self.avg_pt(DISPLAY_RANK_PTS),
             self.point,
             self.avg_point_per_game(),
             self.avg_point_per_round(),
@@ -258,6 +266,13 @@ Nagashi mangan (rate) {} ({:.9})"#,
 }
 
 impl Stat {
+    /// Games finished in each place, 1st first. `rank_4` stays 0 in sanma.
+    #[must_use]
+    pub fn rank_counts(&self) -> [i64; NUM_PLAYERS] {
+        let all = [self.rank_1, self.rank_2, self.rank_3, self.rank_4];
+        array::from_fn(|i| all[i])
+    }
+
     /// We do not use `add_game(&mut self)` here as `Stat` impls `Add` and `Sum` so we
     /// can use rayon easier.
     #[must_use]
@@ -507,21 +522,26 @@ impl Stat {
         Ok(Self::from_game(&events, player_id))
     }
 
+    /// `pts` holds one value per place, 1st first: four, or three in sanma.
     #[inline]
     #[must_use]
-    pub const fn total_pt(&self, pts: [i64; 4]) -> i64 {
-        self.rank_1 * pts[0] + self.rank_2 * pts[1] + self.rank_3 * pts[2] + self.rank_4 * pts[3]
+    pub fn total_pt(&self, pts: [i64; NUM_PLAYERS]) -> i64 {
+        self.rank_counts()
+            .iter()
+            .zip(pts)
+            .map(|(n, pt)| n * pt)
+            .sum()
     }
     #[inline]
     #[must_use]
-    pub fn avg_pt(&self, pts: [i64; 4]) -> f64 {
+    pub fn avg_pt(&self, pts: [i64; NUM_PLAYERS]) -> f64 {
         self.total_pt(pts) as f64 / self.game as f64
     }
     #[getter]
     #[inline]
     #[must_use]
     pub fn avg_rank(&self) -> f64 {
-        self.avg_pt([1, 2, 3, 4])
+        self.avg_pt(array::from_fn(|i| i as i64 + 1))
     }
     #[getter]
     #[inline]
@@ -801,4 +821,32 @@ pub(crate) fn register_module(
     let m = PyModule::new(py, "stat")?;
     m.add_class::<Stat>()?;
     add_submodule(py, prefix, super_mod, &m)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn rank_points_follow_the_seat_count() {
+        // two 1sts, one 2nd and one last place
+        let mut stat = Stat {
+            game: 4,
+            rank_1: 2,
+            rank_2: 1,
+            ..Default::default()
+        };
+        if NUM_PLAYERS == 3 {
+            stat.rank_3 = 1;
+        } else {
+            stat.rank_4 = 1;
+        }
+        let last = NUM_PLAYERS as f64;
+        assert!((stat.avg_rank() - (2. + 2. + last) / 4.).abs() < 1e-12);
+        assert_eq!(stat.rank_counts().iter().sum::<i64>(), stat.game);
+
+        let pts: [i64; NUM_PLAYERS] = array::from_fn(|i| 10 - i as i64 * 5);
+        let last_pt = pts[NUM_PLAYERS - 1];
+        assert_eq!(stat.total_pt(pts), 2 * 10 + 5 + last_pt);
+    }
 }

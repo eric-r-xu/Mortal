@@ -706,6 +706,7 @@ mod test {
     use crate::agent::{Agent, BatchAgent, BatchifiedAgent, InvisibleState};
     use crate::consts::{INIT_SCORE, NUM_PLAYERS, NUM_PLAYERS_U8};
     use crate::mjai::{Event, EventExt};
+    use crate::stat::Stat;
     use crate::state::PlayerState;
     use crate::tile::Tile;
     use crate::{must_tile, t, tu8};
@@ -977,6 +978,28 @@ mod test {
             "seed {:?}",
             result.seed
         );
+
+        // `Stat`, which the evaluation scripts read the dumped logs with,
+        // agrees with the arena on every seat's place and points.
+        let log = result.dump_json_log().unwrap();
+        let rankings = result.rankings();
+        for seat in 0..NUM_PLAYERS {
+            let stat = Stat::from_log(&log, seat as u8).unwrap();
+            let mut place = [0; NUM_PLAYERS];
+            place[rankings.rank_by_player[seat] as usize] = 1;
+            assert_eq!(
+                stat.rank_counts(),
+                place,
+                "seed {:?} seat {seat}",
+                result.seed
+            );
+            assert_eq!(
+                stat.point,
+                (result.scores[seat] - INIT_SCORE) as i64,
+                "seed {:?} seat {seat}",
+                result.seed,
+            );
+        }
     }
 
     #[test]
